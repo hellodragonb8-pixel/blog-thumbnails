@@ -66,19 +66,23 @@ These options go beyond the protocol and are off unless you ask for them:
 | Visible | For presets with `minVisible` (graphs): every mark drawn to be seen (at least 25/255 from the background) keeps at least that contrast. It only checks; set the "subtle" colour to reach it. Presets without `minVisible` skip it. |
 | Readable | The strongest marks reach the preset's `minContrast`, or the ink colour's own contrast if that's lower. |
 | Saved file | The saved file, read back, is pixel for pixel what passed the checks above, so the background is still exactly the theme colour. |
+| Colours merge | Graphs only, where colour tells data series apart. Two clearly different colours in the original (at least 45° apart in hue, each covering at least 300 pixels) stay at least 1.12:1 apart in the thumbnail. It also flags charts whose lines are labelled directly, which read fine, so the uploader is told to check for a legend. Diagrams and code skip it: there the words carry the meaning. |
+| Text on a box | Marks inside a filled box (text on a coloured node, a label on a bar) that were at least 2.5:1 against the box in the original, at thumbnail size, stay at least 1.5:1 against it. It fails when at least 8 such pixels on one box, and at least half of that box's readable marks, fall under. The readable check can't see this: it measures against the page. |
 
 It also checks every preset: after the first colour that differs from the background, each ramp colour must have more contrast than the one before.
 
-To add a sample, drop the image in the matching folder.
+The first nine checks are the protocol: a failure means the script broke a rule. The last two look for meaning the original carried and the greys lost; the script can't fix that without redrawing, so it flags the image NEEDS A LOOK. The test lists which samples each of them is expected to flag (`EXPECTED_FLAGS` in `protocol.test.mjs`), so a change that makes them miss a known case, or flag a good image, fails the test.
+
+To add a sample, drop the image in the matching folder. If it's one the last two checks should flag, add it to `EXPECTED_FLAGS`.
 
 ## Known limits
 
 These come from mapping greys to colours, and no setting can remove them:
 
-- **Different colours with the same brightness become the same grey.** Green and grey boxes can merge, and so can coloured lines. For diagrams, the tint weight makes coloured boxes darker than neutral ones of the same brightness (up to `tintCap`), but two colours that are equally colourful still merge.
+- **Different colours with the same brightness become the same grey.** Green and grey boxes can merge, and so can coloured lines. For diagrams, the tint weight makes coloured boxes darker than neutral ones of the same brightness (up to `tintCap`), but two colours that are equally colourful still merge. In graphs the "colours merge" check flags it.
 - **A thin line and a pale fill of the same grey get the same colour.** The protocol only sees colours, not shapes. Each category's ramp decides how strong faint greys get: stronger for graphs, where they're lines and data, and softer for diagrams and code, where they're fills and highlights.
 - **The lower the ink's contrast, the less room the ramp has.** A light Graph ink of 2.11:1 can't also give faint lines 1.75:1 without squeezing every grey in between into nearly one colour, so the light Graph `minVisible` is 1.3.
 - **Coloured marks on a light image can look paler than expected.** Measured by real brightness, a saturated colour is lighter than a simple RGB average suggests, so on a white page it sits closer to the background. On a dark image it stands out more instead.
-- **Light text on a darker box** (white text on a blue box, white labels on dark bars) stays lighter than its box. It can end up low in contrast, for example the pill labels in `evaluations`. The readability check measures the strongest marks against the background, so it doesn't catch this. Check these by eye, or use the HTML templates for bar charts.
+- **Light text on a darker box** (white text on a blue box, white labels on dark bars) stays lighter than its box. It can end up low in contrast. The "text on a box" check flags it when text that was readable on the box fades; text that was already faint against its box in the original (at thumbnail size) isn't flagged. Check these by eye, or use the HTML templates for bar charts.
 - **Elements lighter than the page** (white cards on a light grey page) come out slightly darker than the page, so they stay visible.
 - **A dark panel inside a light image** (a code block in a diagram) is mapped by the page's background, so its text is inverted.

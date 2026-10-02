@@ -44,7 +44,7 @@ You get one line per image:
 | Result | What it means | What to do |
 |---|---|---|
 | `READY` | Both thumbnails were made and passed every check. | Go to step 3. |
-| `NEEDS A LOOK` | Both thumbnails were made, but a check found something, explained on the next line. Usually some text or lines may be hard to read. | Open `out/preview.html` and look at that image. If it's hard to read, ask the design team. |
+| `NEEDS A LOOK` | Both thumbnails were made, but a check found something, explained on the next line. Usually some text or lines may be hard to read, or two colours in a chart came out as the same grey. | Open `out/preview.html` and look at that image. The next line says what to look for. If it's hard to read, ask the design team. |
 | `FAILED` | No thumbnails were made. The next line says why, for example a file that isn't an image, or two images with the same name. | Fix what it says and run the command again. |
 
 ### 3. Check them and upload

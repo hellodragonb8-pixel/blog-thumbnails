@@ -56,7 +56,7 @@
 import sharp from "sharp";
 import { access, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { buildLut, hexToRgb, legibility, strongestLevel } from "./tone.mjs";
+import { buildLut, greyLevel, hexToRgb, legibility, strongestLevel } from "./tone.mjs";
 import { loadInput } from "./svg.mjs";
 import { pathToFileURL } from "node:url";
 import { reviewCrop, SetupError } from "./review-crop.mjs";
@@ -168,18 +168,8 @@ function accentWeight(r, g, b) {
   return inHue * inSat;
 }
 
-// A pixel's grey: the neutral grey with the same luminance (how bright it
-// looks). Weighted in linear light and converted back, so a saturated colour
-// keeps its brightness: blue #0078d3 is grey 118, not the 101 that weighting
-// the stored values gives. A neutral grey stays exactly the same.
-const LINEAR = Float64Array.from({ length: 256 }, (_, v) => {
-  const c = v / 255;
-  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-});
-const greyOf = (data, o) => {
-  const y = 0.2126 * LINEAR[data[o]] + 0.7152 * LINEAR[data[o + 1]] + 0.0722 * LINEAR[data[o + 2]];
-  return Math.round(255 * (y <= 0.0031308 ? 12.92 * y : 1.055 * y ** (1 / 2.4) - 0.055));
-};
+// A pixel's grey: the neutral grey with the same luminance (tone.mjs, greyLevel).
+const greyOf = (data, o) => greyLevel(data[o], data[o + 1], data[o + 2]);
 
 // Most common grey level (the image background) and one pixel of that colour.
 function background(data, { width, height, channels }) {
@@ -636,14 +626,19 @@ const ADVICE = {
   readable: "Look at it in preview.html. If text is hard to read, ask the design team.",
   visible: "Look at it in preview.html. If lines are missing, ask the design team.",
   "not tiny": "It's very tall, so it ends up small. Run it with --crop auto, or ask the design team.",
+  "colours merge": "Look at it in preview.html. If every line or bar is labelled directly, it's fine. If the chart needs a legend or colour to tell them apart, ask the author for a version where they differ in lightness, or ask the design team.",
+  "text on a box": "Look at that area in preview.html. If the text is hard to read, ask the author for dark text on light boxes (or the other way round), or ask the design team.",
 };
 
 // Plain-language result lines for an image's checks (empty when all passed).
+// Advice is given once per check, after its last failing theme.
 function describeChecks(checks) {
-  return checks
-    .filter((c) => !c.ok)
-    .map((c) => `${c.theme ? `${c.theme} theme: ` : ""}${c.message}. ` +
-      (ADVICE[c.name] ?? "This shouldn't happen: send the image and this message to the design team."));
+  const failed = checks.filter((c) => !c.ok);
+  return failed.map((c, k) => {
+    const last = !failed.slice(k + 1).some((d) => d.name === c.name);
+    return `${c.theme ? `${c.theme} theme: ` : ""}${c.message}.` +
+      (last ? ` ${ADVICE[c.name] ?? "This shouldn't happen: send the image and this message to the design team."}` : "");
+  });
 }
 
 // ---------------------------------------------------------------------------

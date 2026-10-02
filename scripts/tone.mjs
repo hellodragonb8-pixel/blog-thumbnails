@@ -23,6 +23,19 @@ export function clamp01(v) {
   return Math.min(1, Math.max(0, v));
 }
 
+// The neutral grey (0-255) with the same luminance as an RGB colour: how
+// bright it looks. Weighted in linear light and converted back, so a saturated
+// colour keeps its brightness: blue #0078d3 is grey 118, not the 101 that
+// weighting the stored values gives. A neutral grey stays exactly the same.
+const LINEAR = Array.from({ length: 256 }, (_, v) => {
+  const c = v / 255;
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+});
+export function greyLevel(r, g, b) {
+  const y = 0.2126 * LINEAR[r] + 0.7152 * LINEAR[g] + 0.0722 * LINEAR[b];
+  return Math.round(255 * (y <= 0.0031308 ? 12.92 * y : 1.055 * y ** (1 / 2.4) - 0.055));
+}
+
 // WCAG contrast ratio between two RGB colours, from 1 to 21.
 export function contrastRatio(a, b) {
   const lum = (rgb) => {
