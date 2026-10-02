@@ -102,8 +102,8 @@ export const CONFIG = {
       dark:  { background: "#0b0c0d", faint: "#0c0d0e", subtle: "#101112", medium: "#1a1c1e", strong: "#2f3437", text: "#4b5358", ink: "#d5e6f2", minContrast: 3.1 },
     },
     graph: {
-      light: { background: "#f4f5f6", faint: "#e5e7ea", subtle: "#d5d9dd", medium: "#cfd4d8", strong: "#c5cbcf", text: "#b9bfc5", ink: "#a4acb3", minContrast: 2.1, minVisible: 1.3 },
-      dark:  { background: "#0b0c0d", faint: "#25292b", subtle: "#3f4549", medium: "#4c5257", strong: "#5d6469", text: "#6d757b", ink: "#879096", minContrast: 2.9, minVisible: 2 },
+      light: { background: "#f4f5f6", faint: "#e5e7ea", subtle: "#d5d9dd", medium: "#d1d5da", strong: "#bfc5ca", text: "#abb3b9", ink: "#a4acb3", minContrast: 2.1, minVisible: 1.3 },
+      dark:  { background: "#0b0c0d", faint: "#25292b", subtle: "#3f4549", medium: "#454b4f", strong: "#5f676c", text: "#7c858a", ink: "#879096", minContrast: 2.9, minVisible: 2 },
     },
   },
 
