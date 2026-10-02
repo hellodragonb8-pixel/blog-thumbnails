@@ -16,7 +16,7 @@ Every image goes through the same steps, in this order. Nothing else changes the
 
    So there's always at least 32px of space on every side, and exactly 32px on whichever axis the image fills.
 5. **Change the colours, and only the colours.** Each pixel:
-   - is desaturated to a grey: the neutral grey with the same luminance (how bright it looks), measured in linear light. A neutral grey stays exactly the same; a colour keeps its real brightness, so blue `#0078d3` becomes grey 118, clearly lighter than a `#555555` bar next to it. For diagrams, colourful pixels count as further from the background than a neutral grey of the same brightness, like Photoshop's Black & White adjustment. The amount is `CONFIG.tint`: 1 for diagrams, 0 for code and graphs. Without it, a pale blue card on a grey page has the page's grey and vanishes;
+   - is desaturated to a grey: the neutral grey with the same luminance (how bright it looks), measured in linear light. A neutral grey stays exactly the same; a colour keeps its real brightness, so blue `#0078d3` becomes grey 118, clearly lighter than a `#555555` bar next to it. For diagrams, colourful pixels count as further from the background than a neutral grey of the same brightness, like Photoshop's Black & White adjustment. The amount is `CONFIG.tint`: 1 for diagrams, 0 for code and graphs. Without it, a pale blue card on a grey page has the page's grey and vanishes. The extra darkness is limited to `CONFIG.tintCap` (40 grey levels): without a limit, a strongly coloured pale box, such as a yellow `#f5cc84` node, counts as nearly as dark as the black text on it, and the text disappears;
    - gets a contrast amount: how far its grey is from the background grey, from 0 (the background itself) to 1 (as far away as the image allows);
    - is given the colour for that amount from its category's ramp, for the theme.
 
@@ -75,7 +75,7 @@ To add a sample, drop the image in the matching folder.
 
 These come from mapping greys to colours, and no setting can remove them:
 
-- **Different colours with the same brightness become the same grey.** Green and grey boxes can merge, and so can coloured lines. For diagrams, the tint weight makes coloured boxes darker than neutral ones of the same brightness, but two colours that are equally colourful still merge.
+- **Different colours with the same brightness become the same grey.** Green and grey boxes can merge, and so can coloured lines. For diagrams, the tint weight makes coloured boxes darker than neutral ones of the same brightness (up to `tintCap`), but two colours that are equally colourful still merge.
 - **A thin line and a pale fill of the same grey get the same colour.** The protocol only sees colours, not shapes. Each category's ramp decides how strong faint greys get: stronger for graphs, where they're lines and data, and softer for diagrams and code, where they're fills and highlights.
 - **The lower the ink's contrast, the less room the ramp has.** A light Graph ink of 2.11:1 can't also give faint lines 1.75:1 without squeezing every grey in between into nearly one colour, so the light Graph `minVisible` is 1.3.
 - **Coloured marks on a light image can look paler than expected.** Measured by real brightness, a saturated colour is lighter than a simple RGB average suggests, so on a white page it sits closer to the background. On a dark image it stands out more instead.

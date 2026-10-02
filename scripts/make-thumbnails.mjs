@@ -112,6 +112,10 @@ export const CONFIG = {
   // its brightness. 0 = plain desaturation. Keeps pale tinted boxes (a pale
   // blue card on a grey page) from turning into the page grey.
   tint: { diagram: 1, code: 0, graph: 0 }, // see PROTOCOL.md, step 5
+  // Most the tint can add (grey levels). Without a limit, a strongly coloured
+  // pale box (a yellow #f5cc84 node) counts as nearly as dark as the black
+  // text on it, and the text disappears.
+  tintCap: 40,
 
   // How different from the background a pixel must be (grey levels, 0-255) to
   // count as content when trimming the image's own margins. Raise it for noisy JPEGs.
@@ -449,7 +453,7 @@ export async function prepare(input, opts) {
   for (let i = 0; i < grey.length; i++) {
     const o = i * fitted.channels;
     const chroma = Math.max(data[o], data[o + 1], data[o + 2]) - Math.min(data[o], data[o + 1], data[o + 2]);
-    grey[i] = Math.min(255, Math.max(0, Math.round(greyOf(data, o) + away * tint * chroma)));
+    grey[i] = Math.min(255, Math.max(0, Math.round(greyOf(data, o) + away * tint * Math.min(chroma, CONFIG.tintCap))));
   }
   return {
     rgb: data,
