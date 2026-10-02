@@ -16,7 +16,7 @@ Every image goes through the same steps, in this order. Nothing else changes the
 
    So there's always at least 32px of space on every side, and exactly 32px on whichever axis the image fills.
 5. **Change the colours, and only the colours.** Each pixel:
-   - is desaturated to a grey. For diagrams, colourful pixels count as further from the background than a neutral grey of the same brightness, like Photoshop's Black & White adjustment. The amount is `CONFIG.tint`: 1 for diagrams, 0 for code and graphs. Without it, a pale blue card on a grey page has the page's grey and vanishes;
+   - is desaturated to a grey: the neutral grey with the same luminance (how bright it looks), measured in linear light. A neutral grey stays exactly the same; a colour keeps its real brightness, so blue `#0078d3` becomes grey 118, clearly lighter than a `#555555` bar next to it. For diagrams, colourful pixels count as further from the background than a neutral grey of the same brightness, like Photoshop's Black & White adjustment. The amount is `CONFIG.tint`: 1 for diagrams, 0 for code and graphs. Without it, a pale blue card on a grey page has the page's grey and vanishes;
    - gets a contrast amount: how far its grey is from the background grey, from 0 (the background itself) to 1 (as far away as the image allows);
    - is given the colour for that amount from its category's ramp, for the theme.
 
@@ -34,7 +34,7 @@ Every image goes through the same steps, in this order. Nothing else changes the
 
    Greys between two stops get an even blend of the two colours. So the curve is smooth: the same grey always gets the same colour, a grey further from the background never gets less contrast, and there are no steps that would distort shading, soft edges or icons. After the first colour that differs from the background, each colour must have more contrast than the one before; equal colours would make a flat stretch where shading disappears.
 6. **Bring faint images up to the minimum contrast.** The strongest marks are the strongest 1% of content pixels, where content means at least 10/255 away from the background. If they come out below the preset's `minContrast`, that image's contrast amounts are scaled up until they reach it. They never go past the ink colour. This still only changes colours: step 5's rules hold for the result.
-7. **Save** `<name>-light` and `<name>-dark` (WebP by default).
+7. **Save** `<name>-light` and `<name>-dark` (WebP by default), lossless. Lossy compression would shift every colour slightly, the background included, so the file keeps exactly the colours that were checked. The theme background is locked: nothing in the colouring changes it.
 
 ## What the script doesn't do
 
@@ -65,6 +65,7 @@ These options go beyond the protocol and are off unless you ask for them:
 | On palette | Every output colour lies on the preset's ramp, between background and ink. |
 | Visible | For presets with `minVisible` (graphs): every mark drawn to be seen (at least 25/255 from the background) keeps at least that contrast. It only checks; set the "subtle" colour to reach it. Presets without `minVisible` skip it. |
 | Readable | The strongest marks reach the preset's `minContrast`, or the ink colour's own contrast if that's lower. |
+| Saved file | The saved file, read back, is pixel for pixel what passed the checks above, so the background is still exactly the theme colour. |
 
 It also checks every preset: after the first colour that differs from the background, each ramp colour must have more contrast than the one before.
 
@@ -77,6 +78,7 @@ These come from mapping greys to colours, and no setting can remove them:
 - **Different colours with the same brightness become the same grey.** Green and grey boxes can merge, and so can coloured lines. For diagrams, the tint weight makes coloured boxes darker than neutral ones of the same brightness, but two colours that are equally colourful still merge.
 - **A thin line and a pale fill of the same grey get the same colour.** The protocol only sees colours, not shapes. Each category's ramp decides how strong faint greys get: stronger for graphs, where they're lines and data, and softer for diagrams and code, where they're fills and highlights.
 - **The lower the ink's contrast, the less room the ramp has.** A light Graph ink of 2.11:1 can't also give faint lines 1.75:1 without squeezing every grey in between into nearly one colour, so the light Graph `minVisible` is 1.3.
+- **Coloured marks on a light image can look paler than expected.** Measured by real brightness, a saturated colour is lighter than a simple RGB average suggests, so on a white page it sits closer to the background. On a dark image it stands out more instead.
 - **Light text on a darker box** (white text on a blue box, white labels on dark bars) stays lighter than its box. It can end up low in contrast, for example the pill labels in `evaluations`. The readability check measures the strongest marks against the background, so it doesn't catch this. Check these by eye, or use the HTML templates for bar charts.
 - **Elements lighter than the page** (white cards on a light grey page) come out slightly darker than the page, so they stay visible.
 - **A dark panel inside a light image** (a code block in a diagram) is mapped by the page's background, so its text is inverted.

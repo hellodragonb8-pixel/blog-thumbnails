@@ -14,6 +14,8 @@
 //   visible      for presets with minVisible (graphs): nothing visible in the
 //                original fades below that contrast
 //   readable     the strongest marks reach the preset's minimum contrast
+//   saved file   the saved file, read back, is exactly what was checked (so
+//                the background stays locked to the theme colour)
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

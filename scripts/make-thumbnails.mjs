@@ -60,7 +60,7 @@ import { buildLut, hexToRgb, legibility, strongestLevel } from "./tone.mjs";
 import { loadInput } from "./svg.mjs";
 import { pathToFileURL } from "node:url";
 import { reviewCrop, SetupError } from "./review-crop.mjs";
-import { checkThumbnails } from "./checks.mjs";
+import { checkSavedFile, checkThumbnails } from "./checks.mjs";
 import Anthropic from "@anthropic-ai/sdk";
 
 // ---------------------------------------------------------------------------
@@ -164,7 +164,18 @@ function accentWeight(r, g, b) {
   return inHue * inSat;
 }
 
-const greyOf = (data, o) => Math.round(0.2126 * data[o] + 0.7152 * data[o + 1] + 0.0722 * data[o + 2]);
+// A pixel's grey: the neutral grey with the same luminance (how bright it
+// looks). Weighted in linear light and converted back, so a saturated colour
+// keeps its brightness: blue #0078d3 is grey 118, not the 101 that weighting
+// the stored values gives. A neutral grey stays exactly the same.
+const LINEAR = Float64Array.from({ length: 256 }, (_, v) => {
+  const c = v / 255;
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+});
+const greyOf = (data, o) => {
+  const y = 0.2126 * LINEAR[data[o]] + 0.7152 * LINEAR[data[o + 1]] + 0.0722 * LINEAR[data[o + 2]];
+  return Math.round(255 * (y <= 0.0031308 ? 12.92 * y : 1.055 * y ** (1 / 2.4) - 0.055));
+};
 
 // Most common grey level (the image background) and one pixel of that colour.
 function background(data, { width, height, channels }) {
@@ -552,13 +563,17 @@ export async function makeThumbnails(input, opts) {
   const checks = checkThumbnails({ config: CONFIG, type: opts.type, prepared, pixels: images });
   const log = opts.quiet ? () => {} : console.log;
 
+  // Saved lossless, so the file has exactly the colours that were checked: the
+  // theme background stays locked and compression adds no off-palette colours.
   const files = {};
   for (const [themeName, pixels] of Object.entries(images)) {
     const fileName = `${base}-${themeName}.${opts.format}`;
+    const file = path.join(opts.out, fileName);
     await sharp(pixels, { raw: { width: canvasWidth, height: canvasHeight, channels: 3 } })
-      .toFormat(opts.format, opts.format === "webp" ? { quality: 90 } : {})
-      .toFile(path.join(opts.out, fileName));
+      .toFormat(opts.format, opts.format === "webp" ? { lossless: true } : {})
+      .toFile(file);
     files[themeName] = fileName;
+    checks.push(await checkSavedFile(file, pixels, themeName));
   }
 
   // Margins in Figma px: top, right, bottom, left.

@@ -7,6 +7,8 @@
 //   { name, theme, ok, skipped, message }
 // where message explains a failure in plain words.
 
+import sharp from "sharp";
+import { readFile } from "node:fs/promises";
 import { contrastRatio, hexToRgb, inkContrast, themeColor, VISIBLE_LEVEL } from "./tone.mjs";
 
 const same = (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
@@ -25,8 +27,8 @@ const nearest = (colour, ramp) => Math.min(...ramp.map((r) => Math.max(...r.map(
 
 // config: CONFIG from make-thumbnails.mjs. prepared: what prepare() returned
 // for this image. pixels: { light, dark }, each the finished thumbnail as raw
-// RGB, checked just before it's saved (saving as WebP is a separate, standard
-// step that shifts colours slightly).
+// RGB, checked just before it's saved. checkSavedFile() then confirms the
+// saved file holds exactly these pixels.
 export function checkThumbnails({ config, type, prepared, pixels }) {
   const { frame, inset, scale } = config;
   const W = frame.width * scale, H = frame.height * scale, M = inset * scale;
@@ -158,4 +160,18 @@ export function checkThumbnails({ config, type, prepared, pixels }) {
   }
 
   return results;
+}
+
+// The saved file, read back, is pixel for pixel what passed the checks above:
+// saving changed no colour, so the background is still exactly the theme's.
+export async function checkSavedFile(file, pixels, theme) {
+  const name = "saved file";
+  // Read into memory first: sharp holding the file open locks it on Windows.
+  const { data } = await sharp(await readFile(file)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  if (data.length !== pixels.length) return { name, theme, ok: false, skipped: false, message: "the saved file isn't the same size as the thumbnail" };
+  let changed = 0;
+  for (let i = 0; i < data.length; i++) if (data[i] !== pixels[i]) changed++;
+  return changed
+    ? { name, theme, ok: false, skipped: false, message: `saving changed ${changed} colour values, so the file isn't exactly what was checked` }
+    : { name, theme, ok: true, skipped: false, message: "" };
 }
