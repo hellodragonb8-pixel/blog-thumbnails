@@ -1,0 +1,15 @@
+{
+  "name": "blog-thumbnails",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "thumbs": "node scripts/make-thumbnails.mjs",
+    "test": "node --test scripts/protocol.test.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/foundry-sdk": "^0.4.9",
+    "@anthropic-ai/sdk": "^0.128.0",
+    "sharp": "^0.35.5-rc.0",
+    "zod": "^4.6.5"
+  }
+}

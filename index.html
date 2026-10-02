@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Blog thumbnails</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300..600&display=swap">
+  <link rel="stylesheet" href="thumbnails.css">
+  <style>
+    /* Demo page only */
+    body {
+      margin: 0;
+      padding: 48px 16px 80px;
+      background: light-dark(#ffffff, #000000);
+      color: light-dark(#1b2022, #e6e8ea);
+      font-family: var(--thumb-font-sans);
+    }
+    main { max-width: 1200px; margin: 0 auto; }
+    .demo-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 32px; }
+    .demo-head h1 { margin: 0; font-size: 1.75rem; font-weight: 600; }
+    .demo-head button {
+      font: inherit; font-size: .875rem; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+      border: 1px solid light-dark(#d4d7da, #34373a); background: transparent; color: inherit;
+    }
+  </style>
+</head>
+<body>
+<!-- Thumbnail colour map for image fallbacks: paste once per page, right after <body>. -->
+<svg class="thumb-filters" width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
+  <filter id="thumb-map-light" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feColorMatrix in="SourceGraphic" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  .2126 .7152 .0722 -1 1" result="lum"/>
+    <feComponentTransfer in="lum" result="paperMask"><feFuncA type="table" tableValues="0 0 0 0 0 0 0 .35 .75 1 1"/></feComponentTransfer>
+    <feFlood style="flood-color: var(--thumb-map-ink-light)" result="ink"/>
+    <feFlood style="flood-color: var(--thumb-map-paper-light)"/><feComposite in2="paperMask" operator="in" result="paper"/>
+    <feMerge><feMergeNode in="ink"/><feMergeNode in="paper"/></feMerge>
+  </filter>
+  <filter id="thumb-map-dark" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feColorMatrix in="SourceGraphic" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  .2126 .7152 .0722 -1 1" result="lum"/>
+    <feComponentTransfer in="lum" result="paperMask"><feFuncA type="table" tableValues="0 0 0 0 0 0 0 .35 .75 1 1"/></feComponentTransfer>
+    <feFlood style="flood-color: var(--thumb-map-ink-dark)" result="ink"/>
+    <feFlood style="flood-color: var(--thumb-map-paper-dark)"/><feComposite in2="paperMask" operator="in" result="paper"/>
+    <feMerge><feMergeNode in="ink"/><feMergeNode in="paper"/></feMerge>
+  </filter>
+</svg>
+<main>
+  <header class="demo-head">
+    <h1>From the blog</h1>
+    <button type="button" id="theme-toggle">Theme: system</button>
+  </header>
+
+  <ul class="post-grid">
+
+    <!-- Bar chart ---------------------------------------------------------->
+    <li class="post-card">
+      <a class="post-card__link" href="https://code.visualstudio.com/blogs/2026/07/29/mai-code-1-flash">
+        <div class="thumb" data-type="chart" aria-hidden="true">
+          <div class="thumb__charts">
+            <figure class="thumb__chart">
+              <ol class="thumb__bars">
+                <li style="--v: .84"><span>Claude Haiku 4.5</span><span>-3%</span></li>
+                <li style="--v: .85"><span>GPT 5.4 Mini</span><span>-2%</span></li>
+                <li style="--v: .87" data-highlight><span>MAI-Code-1-Flash</span></li>
+                <li style="--v: .90"><span>GPT 5.6 Luna</span><span>+3%</span></li>
+                <li style="--v: .91"><span>Kimi K2.7 Code</span><span>+4%</span></li>
+              </ol>
+              <figcaption class="thumb__axis"><span>0%</span><span>Code survival rate</span><span>100%</span></figcaption>
+            </figure>
+            <figure class="thumb__chart">
+              <ol class="thumb__bars">
+                <li style="--v: .405"><span>Claude Haiku 4.5</span><span>-10%</span></li>
+                <li style="--v: .451" data-highlight><span>MAI-Code-1-Flash</span></li>
+                <li style="--v: .481"><span>GPT 5.4 Mini</span><span>+7%</span></li>
+                <li style="--v: .754"><span>GPT 5.6 Luna</span><span>+67%</span></li>
+                <li style="--v: .877"><span>Kimi K2.7 Code</span><span>+94%</span></li>
+              </ol>
+              <figcaption class="thumb__axis"><span></span><span>Tokens per turn</span><span></span></figcaption>
+            </figure>
+          </div>
+        </div>
+        <h3 class="post-card__title">MAI-Code-1-Flash: early results from real developer workflows</h3>
+      </a>
+      <p class="post-card__meta">July 29, 2026 · Bar chart, rebuilt from the post's chart image</p>
+    </li>
+
+    <!-- Code snippet ------------------------------------------------------->
+    <li class="post-card">
+      <a class="post-card__link" href="#">
+        <div class="thumb" data-type="code" aria-hidden="true">
+          <div class="thumb__body">
+            <p class="thumb__title">Building the GitHub Copilot Inline Suggestions Model</p>
+            <ol class="thumb__code" style="--first-line: 6">
+              <li></li>
+              <li data-mark>const completionsModel: InlineSuggestionsModel = { kind: "completion" };</li>
+              <li>const nextEditModel: InlineSuggestionsModel = { kind: "next-edit-suggestion" };</li>
+              <li>const longDistanceModel: InlineSuggestionsModel = { kind: "long-distance-edit" };</li>
+              <li data-ghost>const unifiedModel: InlineSuggestionsModel = { kind: "unified" };</li>
+              <li></li>
+              <li></li>
+            </ol>
+          </div>
+        </div>
+        <h3 class="post-card__title">Building the GitHub Copilot Inline Suggestions Model</h3>
+      </a>
+      <p class="post-card__meta">Sample post · Code snippet</p>
+    </li>
+
+    <!-- Diagram: the post's SVG pasted inline ------------------------------>
+    <li class="post-card">
+      <a class="post-card__link" href="#">
+        <div class="thumb" data-type="diagram" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 280">
+            <style>
+              svg {
+                --diagram-bg: #fff;
+                --diagram-surface: #f6f6f7;
+                --diagram-border: #e2e2e3;
+                --diagram-blue-fill: #edf4ff;
+                --diagram-blue-border: #b8d2fb;
+                --diagram-blue: #3b82f6;
+                --diagram-blue-text: #2563eb;
+                --diagram-text: #5f6067;
+                --diagram-muted: #909096;
+                --diagram-muted-text: #686971;
+                font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+              }
+              .surface { fill: var(--diagram-surface); stroke: var(--diagram-border); stroke-width: 2; }
+              .section-label { fill: var(--diagram-muted-text); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12.5px; letter-spacing: 0.14em; text-anchor: middle; }
+              .card { fill: var(--diagram-bg); stroke: var(--diagram-border); stroke-width: 1.5; }
+              .client-card, .host-shell { fill: var(--diagram-blue-fill); stroke: var(--diagram-blue-border); }
+              .host-shell { stroke-width: 1.8; }
+              .connector { fill: none; stroke: var(--diagram-muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+              .component-label { fill: var(--diagram-text); font-size: 14px; font-weight: 600; }
+              .centered-label { text-anchor: middle; }
+              .protocol-label { fill: var(--diagram-blue-text); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13.5px; font-weight: 600; text-anchor: middle; }
+              .endpoint-icon { fill: none; stroke: var(--diagram-blue); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+              .endpoint-icon-fill { fill: var(--diagram-blue); }
+            </style>
+            <rect class="surface" x="1" y="1" width="798" height="278" rx="14" />
+            <g>
+              <path class="connector" d="M244 128H286M253 120l-9 8 9 8M277 120l9 8-9 8" />
+              <path class="connector" d="M244 202H286M253 194l-9 8 9 8M277 194l9 8-9 8" />
+            </g>
+            <g>
+              <rect class="card client-card" x="20" y="96" width="220" height="64" rx="11" />
+              <rect class="card client-card" x="20" y="170" width="220" height="64" rx="11" />
+              <rect class="host-shell" x="290" y="54" width="220" height="200" rx="13" />
+              <rect class="card" x="310" y="96" width="180" height="64" rx="11" />
+              <rect class="card" x="310" y="170" width="180" height="64" rx="11" />
+              <rect class="card" x="560" y="96" width="220" height="64" rx="11" />
+              <rect class="card" x="560" y="170" width="220" height="64" rx="11" />
+            </g>
+            <g>
+              <rect x="507" y="117" width="6" height="22" fill="var(--diagram-blue-fill)" />
+              <rect x="507" y="191" width="6" height="22" fill="var(--diagram-blue-fill)" />
+              <path class="connector" d="M494 128H556M503 120l-9 8 9 8M547 120l9 8-9 8" />
+              <path class="connector" d="M494 202H556M503 194l-9 8 9 8M547 194l9 8-9 8" />
+            </g>
+            <g>
+              <text class="section-label" x="400" y="36">HOST</text>
+              <text class="section-label" x="130" y="36">CLIENTS</text>
+              <text class="section-label" x="670" y="36">HARNESSES</text>
+              <text class="protocol-label" x="265" y="113">AHP</text>
+              <text class="protocol-label" x="265" y="187">AHP</text>
+              <text class="component-label centered-label" x="130" y="134">VS Code Agents Window</text>
+              <text class="component-label centered-label" x="130" y="208">VS Code Editor Window</text>
+              <g class="endpoint-icon">
+                <rect x="314" y="66" width="16" height="5" rx="1.25" />
+                <rect x="314" y="77" width="16" height="5" rx="1.25" />
+                <circle class="endpoint-icon-fill" cx="326" cy="68.5" r="1.1" />
+                <circle class="endpoint-icon-fill" cx="326" cy="79.5" r="1.1" />
+              </g>
+              <text class="component-label" x="342" y="82">Agent Host process</text>
+              <text class="component-label centered-label" x="400" y="134">Copilot SDK</text>
+              <text class="component-label centered-label" x="400" y="208">Claude SDK</text>
+              <text class="component-label centered-label" x="670" y="134">Copilot runtime process</text>
+              <text class="component-label centered-label" x="670" y="208">Claude runtime process</text>
+            </g>
+          </svg>
+        </div>
+        <h3 class="post-card__title">Inside the Agent Host: one process, many harnesses</h3>
+      </a>
+      <p class="post-card__meta">Sample post · Diagram</p>
+    </li>
+
+    <!-- Text-only title ---------------------------------------------------->
+    <li class="post-card">
+      <a class="post-card__link" href="#">
+        <div class="thumb" data-type="title" aria-hidden="true">
+          <div class="thumb__body">
+            <p class="thumb__title">What we learned shipping next edit suggestions</p>
+          </div>
+        </div>
+        <h3 class="post-card__title">What we learned shipping next edit suggestions</h3>
+      </a>
+      <p class="post-card__meta">Sample post · Title only</p>
+    </li>
+
+    <!-- Pre-rendered image: made by scripts/make-thumbnails.mjs ------------->
+    <li class="post-card">
+      <a class="post-card__link" href="#">
+        <div class="thumb" data-type="rendered" aria-hidden="true">
+          <img class="thumb__img--light" src="assets/thumbs/line-chart-original-light.webp" alt="" loading="lazy">
+          <img class="thumb__img--dark" src="assets/thumbs/line-chart-original-dark.webp" alt="" loading="lazy">
+        </div>
+        <h3 class="post-card__title">Tokens per turn across three model generations</h3>
+      </a>
+      <p class="post-card__meta">Sample post · Pre-rendered image</p>
+    </li>
+
+    <li class="post-card">
+      <a class="post-card__link" href="#">
+        <div class="thumb" data-type="rendered" aria-hidden="true">
+          <img class="thumb__img--light" src="assets/thumbs/diagram-original-light.webp" alt="" loading="lazy">
+          <img class="thumb__img--dark" src="assets/thumbs/diagram-original-dark.webp" alt="" loading="lazy">
+        </div>
+        <h3 class="post-card__title">Inside the Agent Host: one process, many harnesses</h3>
+      </a>
+      <p class="post-card__meta">Sample post · Pre-rendered image (from the diagram SVG)</p>
+    </li>
+
+  </ul>
+</main>
+
+<script>
+  // Demo only: cycle system -> light -> dark via data-theme on <html>.
+  (function () {
+    var modes = ["system", "light", "dark"], i = 0, btn = document.getElementById("theme-toggle");
+    btn.addEventListener("click", function () {
+      i = (i + 1) % modes.length;
+      if (modes[i] === "system") document.documentElement.removeAttribute("data-theme");
+      else document.documentElement.setAttribute("data-theme", modes[i]);
+      btn.textContent = "Theme: " + modes[i];
+    });
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,454 @@
+/* =============================================================================
+   Blog post thumbnails
+   -----------------------------------------------------------------------------
+   Reproduces the "homepage-redesign" Figma thumbnails (node 890-1097).
+
+   The Figma thumbnails are redrawn in a muted house style rather than being
+   filtered screenshots, so each category is a small template that is styled
+   here and filled with the post's own content:
+
+     <div class="thumb" data-type="chart">    bars from data
+     <div class="thumb" data-type="code">     live code text
+     <div class="thumb" data-type="diagram">  the post's inline SVG, re-themed
+     <div class="thumb" data-type="title">    the post title as text
+     <div class="thumb" data-type="rendered"> an image pre-rendered by scripts/make-thumbnails.mjs
+     <div class="thumb" data-type="image">    last resort: any image, re-coloured in the browser
+
+   Everything inside a thumbnail is laid out on the Figma frame (358 x 198)
+   using --u, one Figma pixel expressed in container units. All numbers below
+   are the Figma values, so a thumbnail scales exactly like an image at any
+   card width.
+
+   Fonts: SF Pro (Apple devices only; falls back to the system UI font) and
+   Geist Mono (load it from Google Fonts, see README).
+
+   Theme: follows the OS setting; data-theme="light|dark" on <html> (or any
+   ancestor) overrides it.
+   ========================================================================== */
+
+
+/* 1. Tokens ---------------------------------------------------------------- */
+/* All values come from the Figma SVG exports (light and dark).
+   light-dark() takes the light value first. */
+
+:root {
+  color-scheme: light dark;
+  --thumb-is-dark: 0; /* 0 or 1 */
+
+  /* Frame */
+  --thumb-bg:            light-dark(#f4f5f6, #0b0c0d);
+  --thumb-radius:        4px; /* Figma: 4px on a 358px-wide frame */
+  --thumb-accent:        #4082ee;
+
+  /* Typography */
+  --thumb-font-sans: "SF Pro Text", "SF Pro", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --thumb-font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Chart */
+  --thumb-bar:           light-dark(rgb(175 194 206 / 0.25), rgb(137 141 144 / 0.25));
+  --thumb-bar-text:      #737a7f;
+  --thumb-bar-hi:        light-dark(#aec2cf, #696d6f);
+  --thumb-bar-hi-text:   #363d42;
+  --thumb-axis-text:     #737a7f;
+  --thumb-gridline:      #aac3d4;
+
+  /* Code + title */
+  --thumb-title:         light-dark(#1b2022, #8a8d8f);
+  --thumb-code:          light-dark(#737a7f, #8a8d8f);
+  --thumb-code-marker:   light-dark(var(--thumb-accent), #8a8d8f);
+
+  /* Diagram */
+  --thumb-dg-heading:       light-dark(#737a7f, #8a8d8f);
+  --thumb-dg-text:          light-dark(#292d2f, #989b9d);
+  --thumb-dg-title:         light-dark(#292d2f, #989fa4); /* "Agent Host process" */
+  --thumb-dg-panel:         light-dark(#ebf1fa, #16181b);
+  --thumb-dg-panel-border:  rgb(64 130 238 / 0.5);
+  --thumb-dg-client:        light-dark(#ebf1fa, #36383a);
+  --thumb-dg-client-border: var(--thumb-accent);
+  --thumb-dg-card:          light-dark(#f2f7ff, #36383a);
+  --thumb-dg-card-border:   light-dark(#b4b6b8, #545a61);
+  --thumb-dg-arrow:         light-dark(#b4b6b8, #454b51);
+
+  /* Image fallback: a two-tone map (see section 7). Plain hex values,
+     because the SVG filter that uses them picks light or dark itself. */
+  --thumb-map-paper-light:  #f4f5f6;  /* image background */
+  --thumb-map-ink-light:    #a9afb3;  /* everything drawn on it: lines, text, axes */
+  --thumb-map-paper-dark:   #0b0c0d;
+  --thumb-map-ink-dark:     #62686c;
+  --thumb-image-inset:      20;       /* Figma px on every side of a fallback image */
+  --thumb-map: url(#thumb-map-light);
+}
+
+[data-theme="light"] { color-scheme: light; --thumb-is-dark: 0; --thumb-map: url(#thumb-map-light); }
+[data-theme="dark"]  { color-scheme: dark;  --thumb-is-dark: 1; --thumb-map: url(#thumb-map-dark); }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --thumb-is-dark: 1; --thumb-map: url(#thumb-map-dark); }
+}
+
+
+/* 2. Frame ----------------------------------------------------------------- */
+
+.thumb {
+  --u: calc(100cqi / 358); /* one Figma pixel; resolved by the children */
+
+  container-type: inline-size;
+  position: relative;
+  aspect-ratio: 358 / 198;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: var(--thumb-radius);
+  background: var(--thumb-bg);
+  color: var(--thumb-bar-text);
+  font-family: var(--thumb-font-sans);
+  font-weight: 400;
+  line-height: 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.thumb *,
+.thumb *::before,
+.thumb *::after {
+  box-sizing: border-box;
+}
+
+
+/* 3. Chart ----------------------------------------------------------------- */
+/* One or two charts side by side. Each bar sets --v (0-1) for its length; a
+   bar never gets shorter than its own label and change value. */
+
+.thumb[data-type="chart"] .thumb__charts {
+  position: absolute;
+  top: calc(37 * var(--u));
+  left: calc(33 * var(--u));
+  display: grid;
+  grid-template-columns: repeat(2, calc(120.75 * var(--u)));
+  column-gap: calc(44.25 * var(--u));
+}
+
+.thumb .thumb__chart {
+  margin: 0;
+}
+
+.thumb__bars {
+  position: relative;
+  display: grid;
+  row-gap: calc(11 * var(--u));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Dotted 100% line: 0.5px dashes every 2.5px */
+.thumb__bars::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(100% - 0.25 * var(--u));
+  width: calc(0.5 * var(--u));
+  background:
+    linear-gradient(var(--thumb-gridline) 0 calc(0.5 * var(--u)), transparent 0)
+    0 0 / 100% calc(2.5 * var(--u)) repeat-y;
+}
+
+.thumb__bars > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(4 * var(--u));
+  width: calc(var(--v, 1) * 100%);
+  min-width: max-content;
+  height: calc(12 * var(--u));
+  padding: 0 calc(2.5 * var(--u)) 0 calc(2 * var(--u));
+  border-radius: calc(1 * var(--u));
+  background: var(--thumb-bar);
+  color: var(--thumb-bar-text);
+  font-size: calc(6 * var(--u));
+  font-weight: 510;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.thumb__bars > li[data-highlight] {
+  background: var(--thumb-bar-hi);
+  color: var(--thumb-bar-hi-text);
+}
+
+.thumb .thumb__axis {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  width: calc(100% + 6 * var(--u)); /* "100%" sits centred under the line */
+  margin-top: calc(12.7 * var(--u));
+  color: var(--thumb-axis-text);
+  font-family: var(--thumb-font-mono);
+  font-size: calc(4 * var(--u));
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.thumb .thumb__axis > :last-child {
+  text-align: right;
+}
+
+
+/* 4. Title (code and text-only cards) -------------------------------------- */
+
+.thumb[data-type="code"] .thumb__body,
+.thumb[data-type="title"] .thumb__body {
+  position: absolute;
+  inset: 0;
+  padding: calc(16 * var(--u));
+}
+
+.thumb__title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  max-width: calc(135 * var(--u)); /* wraps after "Copilot" in SF Pro and in fallbacks */
+  margin: 0;
+  color: var(--thumb-title);
+  font-size: calc(10 * var(--u));
+  font-weight: 400;
+  line-height: calc(13 * var(--u));
+  letter-spacing: -0.01em;
+}
+
+
+/* 5. Code ------------------------------------------------------------------ */
+/* An <ol> of source lines. Line numbers come from a counter that starts at
+   --first-line; data-mark adds the tab marker; data-ghost is an unnumbered
+   suggestion line. */
+
+.thumb__code {
+  counter-reset: ln calc(var(--first-line, 1) - 1);
+  margin: calc(18 * var(--u)) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--thumb-code);
+  font-family: var(--thumb-font-mono);
+  font-size: calc(6 * var(--u));
+  line-height: calc(10 * var(--u));
+  tab-size: 2;
+}
+
+/* Gutter: line number at 0, marker at 7.5, code at 17.95 (Figma px) */
+.thumb__code > li {
+  counter-increment: ln;
+  position: relative;
+  min-height: calc(10 * var(--u));
+  padding-left: calc(17.95 * var(--u));
+  white-space: pre; /* on the lines only, so markup newlines between <li>s don't render */
+}
+
+.thumb__code > li::before {
+  content: counter(ln);
+  position: absolute;
+  left: 0;
+  letter-spacing: -0.01em;
+}
+
+.thumb__code > li[data-ghost] {
+  counter-increment: none;
+}
+
+.thumb__code > li[data-ghost]::before {
+  content: "";
+}
+
+/* The tab-accept marker (Figma icon paths), tinted with --thumb-code-marker */
+.thumb__code > li[data-mark]::after {
+  content: "";
+  position: absolute;
+  top: calc(2 * var(--u));
+  left: calc(7.5 * var(--u));
+  width: calc(8 * var(--u));
+  height: calc(6.1 * var(--u));
+  background: var(--thumb-code-marker);
+  -webkit-mask: var(--thumb-marker-icon) center / contain no-repeat;
+          mask: var(--thumb-marker-icon) center / contain no-repeat;
+}
+
+.thumb {
+  --thumb-marker-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='23.5 72 8 6.1'%3E%3Cpath d='M23.8443 72.125C23.9996 72.125 24.1256 72.251 24.1256 72.4062V74.0938C24.1256 74.5589 24.5041 74.9375 24.9693 74.9375H29.3529L27.8645 73.4491C27.7548 73.3394 27.7548 73.1611 27.8645 73.0514C27.9742 72.9417 28.1525 72.9417 28.2622 73.0514L30.2309 75.0202C30.3406 75.1299 30.3406 75.3082 30.2309 75.4179L28.2622 77.3866C28.2071 77.4418 28.1351 77.4688 28.0631 77.4688C27.9911 77.4688 27.9191 77.4412 27.8639 77.3866C27.7542 77.2769 27.7542 77.0986 27.8639 76.9889L29.3523 75.5006H24.9688C24.1931 75.5006 23.5625 74.87 23.5625 74.0943V72.4068C23.5625 72.2516 23.6885 72.1256 23.8438 72.1256Z'/%3E%3Cpath d='M30.875 72.688V77.7505L30.8795 77.8011C30.892 77.8703 30.93 77.9323 30.9859 77.9748C31.0418 78.0174 31.1116 78.0375 31.1817 78.0311C31.2517 78.0248 31.3167 77.9924 31.3641 77.9405C31.4115 77.8886 31.4376 77.8208 31.4375 77.7505V72.688L31.433 72.6374C31.4205 72.5682 31.3825 72.5063 31.3266 72.4637C31.2707 72.4211 31.2009 72.4011 31.1308 72.4074C31.0609 72.4138 30.9958 72.4461 30.9484 72.498C30.901 72.55 30.8749 72.6177 30.875 72.688Z'/%3E%3C/svg%3E");
+}
+
+
+/* 6. Diagram --------------------------------------------------------------- */
+/* Paste the post's SVG inline. Diagrams built on the house template expose
+   --diagram-* variables and shared class names; both are remapped here.
+   The SVG's own layout is kept. Sizes below are in the SVG's user units:
+   an 800-unit-wide diagram is drawn 286.67 Figma px wide, so 1 Figma px is
+   ~2.79 user units (5.5px text -> 15.35, 0.25px stroke -> 0.7). */
+
+.thumb[data-type="diagram"] svg {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: calc(286.67 * var(--u));
+  height: auto;
+  translate: -50% -50%;
+
+  --diagram-bg:          var(--thumb-dg-card);
+  --diagram-surface:     transparent;
+  --diagram-border:      var(--thumb-dg-card-border);
+  --diagram-blue-fill:   var(--thumb-dg-panel);     /* also paints the arrow "ports" */
+  --diagram-blue-border: var(--thumb-dg-panel-border);
+  --diagram-blue:        var(--thumb-accent);
+  --diagram-blue-text:   var(--thumb-accent);
+  --diagram-text:        var(--thumb-dg-text);
+  --diagram-muted:       var(--thumb-dg-arrow);
+  --diagram-muted-text:  var(--thumb-dg-heading);
+  font-family: var(--thumb-font-sans);
+}
+
+.thumb[data-type="diagram"] .surface       { stroke: none; }
+.thumb[data-type="diagram"] .endpoint-icon { display: none; }
+
+.thumb[data-type="diagram"] .card,
+.thumb[data-type="diagram"] .host-shell {
+  stroke-width: 0.7;
+  rx: 16.4px; /* Figma: 5.875px */
+}
+
+.thumb[data-type="diagram"] .client-card {
+  fill: var(--thumb-dg-client);
+  stroke: var(--thumb-dg-client-border);
+}
+
+.thumb[data-type="diagram"] .section-label {
+  font-family: var(--thumb-font-mono);
+  font-size: 15.35px;
+  letter-spacing: -0.01em;
+}
+
+.thumb[data-type="diagram"] .component-label {
+  font-family: var(--thumb-font-sans);
+  font-size: 15.35px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+/* Panel titles (the only labels that aren't centred) are semibold */
+.thumb[data-type="diagram"] .component-label:not(.centered-label) {
+  fill: var(--thumb-dg-title);
+  font-weight: 590;
+}
+
+.thumb[data-type="diagram"] .protocol-label {
+  font-family: var(--thumb-font-mono);
+  font-size: 15.35px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+
+/* 7. Image fallback -------------------------------------------------------- */
+/* Any image, re-coloured into the thumbnail palette and inset by the same
+   margin on every side. The colour step is an SVG filter (#thumb-map-light /
+   #thumb-map-dark, pasted once per page, see README) that maps brightness to
+   two tones:
+     image background (bright)          -> --thumb-map-paper-*
+     everything drawn on it (lines, text) -> --thumb-map-ink-*  (light, mid-contrast grey)
+   No accent colour: brightness alone can't tell which part deserves it.
+   data-source="dark"  a dark image (e.g. an editor screenshot); inverted first
+   data-fit="contain"  show the whole image; otherwise cover + --focus crop */
+
+.thumb[data-type="image"] {
+  background: var(--thumb-bg);
+}
+
+.thumb[data-type="image"] img {
+  --source-is-dark: 0;
+
+  position: absolute;
+  inset: calc(var(--thumb-image-inset) * var(--u));
+  display: block;
+  width: calc(100% - 2 * var(--thumb-image-inset) * var(--u));
+  height: calc(100% - 2 * var(--thumb-image-inset) * var(--u));
+  object-fit: cover;
+  object-position: var(--focus, 50% 50%);
+  background: #fff; /* the source "paper", so letterboxing maps to the background */
+  filter: invert(var(--source-is-dark)) var(--thumb-map);
+}
+
+.thumb[data-type="image"][data-source="dark"] img {
+  --source-is-dark: 1;
+  background: #000;
+}
+
+.thumb[data-type="image"][data-fit="contain"] img {
+  object-fit: contain;
+}
+
+
+/* 8. Pre-rendered image ---------------------------------------------------- */
+/* A light and a dark file made by scripts/make-thumbnails.mjs. The colours and
+   the 32px margin are already in the files, so they fill the frame with no
+   extra inset. Only the current theme's image is displayed, so with
+   loading="lazy" only that one is downloaded. */
+
+.thumb[data-type="rendered"] img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.thumb[data-type="rendered"] .thumb__img--dark { display: none; }
+
+@media (prefers-color-scheme: dark) {
+  :where(:root:not([data-theme="light"])) .thumb[data-type="rendered"] .thumb__img--light { display: none; }
+  :where(:root:not([data-theme="light"])) .thumb[data-type="rendered"] .thumb__img--dark  { display: block; }
+}
+
+[data-theme="dark"]  .thumb[data-type="rendered"] .thumb__img--light { display: none; }
+[data-theme="dark"]  .thumb[data-type="rendered"] .thumb__img--dark  { display: block; }
+[data-theme="light"] .thumb[data-type="rendered"] .thumb__img--light { display: block; }
+[data-theme="light"] .thumb[data-type="rendered"] .thumb__img--dark  { display: none; }
+
+
+/* 9. Blog card + grid ------------------------------------------------------ */
+/* Not specified in the Figma frames: a neutral card around the thumbnail. */
+
+.post-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: 40px 24px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.post-card__link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--thumb-radius);
+}
+
+.post-card__link:focus-visible {
+  outline: 2px solid var(--thumb-accent);
+  outline-offset: 4px;
+}
+
+.post-card__title {
+  margin: 14px 0 4px;
+  font-family: var(--thumb-font-sans);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.35;
+  text-wrap: pretty;
+}
+
+.post-card__meta {
+  margin: 0;
+  color: light-dark(#5f6468, #9a9ea2);
+  font-family: var(--thumb-font-sans);
+  font-size: 0.875rem;
+}

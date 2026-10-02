@@ -1,0 +1,17 @@
+<!-- Thumbnail colour map for image fallbacks: paste once per page, right after <body>. -->
+<svg class="thumb-filters" width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
+  <filter id="thumb-map-light" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feColorMatrix in="SourceGraphic" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  .2126 .7152 .0722 -1 1" result="lum"/>
+    <feComponentTransfer in="lum" result="paperMask"><feFuncA type="table" tableValues="0 0 0 0 0 0 0 .35 .75 1 1"/></feComponentTransfer>
+    <feFlood style="flood-color: var(--thumb-map-ink-light)" result="ink"/>
+    <feFlood style="flood-color: var(--thumb-map-paper-light)"/><feComposite in2="paperMask" operator="in" result="paper"/>
+    <feMerge><feMergeNode in="ink"/><feMergeNode in="paper"/></feMerge>
+  </filter>
+  <filter id="thumb-map-dark" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feColorMatrix in="SourceGraphic" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  .2126 .7152 .0722 -1 1" result="lum"/>
+    <feComponentTransfer in="lum" result="paperMask"><feFuncA type="table" tableValues="0 0 0 0 0 0 0 .35 .75 1 1"/></feComponentTransfer>
+    <feFlood style="flood-color: var(--thumb-map-ink-dark)" result="ink"/>
+    <feFlood style="flood-color: var(--thumb-map-paper-dark)"/><feComposite in2="paperMask" operator="in" result="paper"/>
+    <feMerge><feMergeNode in="ink"/><feMergeNode in="paper"/></feMerge>
+  </filter>
+</svg>

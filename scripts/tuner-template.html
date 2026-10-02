@@ -1,0 +1,539 @@
+<!doctype html>
+<!-- Template for <out>/tuner.html. make-thumbnails.mjs fills in the TONE
+     placeholder with scripts/tone.mjs and the DATA placeholder with the presets
+     and every image's contrast map. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thumbnail tuner</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #ffffff;
+    --panel: #f7f8f9;
+    --text: #1b2022;
+    --muted: #5f6468;
+    --rule: #e3e6e8;
+    --accent: #4082ee;
+    --warn: #b4560a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  h1 { margin: 0 0 4px; font-size: 1.375rem; font-weight: 600; }
+  h2 { margin: 0; font-size: 0.9375rem; font-weight: 600; }
+  .intro { margin: 0; color: var(--muted); }
+  code { font-family: ui-monospace, Consolas, monospace; font-size: 0.9em; }
+
+  .layout {
+    display: grid;
+    gap: 24px;
+    padding: 24px 16px 64px;
+    max-width: 1480px;
+    margin: 0 auto;
+  }
+  @media (min-width: 980px) {
+    .layout { grid-template-columns: 360px minmax(0, 1fr); align-items: start; }
+    .controls { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; padding-right: 4px; }
+  }
+
+  /* Category tabs */
+  .tabs { display: flex; gap: 4px; padding: 4px; border-radius: 8px; background: var(--panel); border: 1px solid var(--rule); }
+  .tabs label { flex: 1; }
+  .tabs input { position: absolute; opacity: 0; pointer-events: none; }
+  .tabs span {
+    display: block;
+    padding: 6px 8px;
+    border-radius: 6px;
+    text-align: center;
+    cursor: pointer;
+    color: var(--muted);
+  }
+  .tabs input:checked + span { background: #fff; color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
+  .tabs input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* Controls */
+  .controls { display: grid; gap: 16px; }
+  fieldset {
+    margin: 0;
+    padding: 12px 14px 14px;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: var(--panel);
+    display: grid;
+    gap: 8px;
+  }
+  legend { padding: 0 4px; font-weight: 600; }
+  .group { margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .control { display: grid; grid-template-columns: 96px minmax(0, 1fr) 64px; gap: 8px; align-items: center; }
+  .control > span:first-child { color: var(--muted); }
+  .control--color { grid-template-columns: 96px 36px minmax(0, 1fr); }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  input.hue { accent-color: #6b8796; }
+  input[type="number"], input[type="text"] {
+    width: 100%;
+    padding: 4px 6px;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    font: 13px ui-monospace, Consolas, monospace;
+    background: #fff;
+    color: inherit;
+  }
+  input[type="color"] { width: 36px; height: 28px; padding: 0; border: 1px solid var(--rule); border-radius: 6px; background: #fff; }
+  .strip { height: 18px; border-radius: 4px; outline: 1px solid rgb(128 128 128 / 0.3); }
+  .strip-note { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); font-family: ui-monospace, Consolas, monospace; }
+  .toggle { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; }
+  .ramp-warning { font-size: 12px; color: var(--warn); }
+  .ramp-warning:empty { display: none; }
+
+  .settings { display: grid; gap: 8px; }
+  .settings__head { display: flex; gap: 8px; align-items: center; }
+  .settings__head h2 { flex: 1; }
+  button {
+    font: inherit;
+    padding: 5px 12px;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: #fff;
+    color: inherit;
+    cursor: pointer;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  textarea {
+    width: 100%;
+    min-height: 120px;
+    padding: 8px;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    font: 12px/1.45 ui-monospace, Consolas, monospace;
+    resize: vertical;
+    background: #fff;
+    color: inherit;
+    white-space: pre;
+  }
+
+  /* Images */
+  .images { display: grid; gap: 32px; }
+  .image { display: grid; gap: 10px; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
+  .grid--refs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  @media (max-width: 640px) { .grid--refs { grid-template-columns: minmax(0, 1fr); } }
+  figure { margin: 0; padding: 12px; border-radius: 8px; }
+  .cell--light { background: #ffffff; outline: 1px solid var(--rule); outline-offset: -1px; }
+  .cell--dark { background: #000000; }
+  .frame { position: relative; border-radius: 4px; overflow: hidden; }
+  .frame canvas, .frame img { display: block; width: 100%; height: auto; }
+  .frame canvas { cursor: crosshair; }
+  figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 8px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .cell--dark figcaption { color: #9a9ea2; }
+  .legible { font-variant-numeric: tabular-nums; }
+  .legible.boosted { color: var(--accent); }
+  .cell--dark .legible.boosted { color: #8fb4f5; }
+  output { font-family: ui-monospace, Consolas, monospace; display: inline-flex; gap: 6px; align-items: center; min-height: 1.4em; }
+  .swatch { width: 10px; height: 10px; border-radius: 2px; outline: 1px solid rgb(128 128 128 / 0.5); }
+  .guide { display: none; position: absolute; outline: 1px dashed var(--accent); pointer-events: none; }
+  body.show-guides .guide { display: block; }
+  .empty { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="controls" aria-label="Preset settings">
+    <div>
+      <h1>Thumbnail tuner</h1>
+      <p class="intro">Pick a category; its settings apply to every image in it. Hover an image to read a pixel's colour and contrast. When it looks right, copy the preset into <code>CONFIG.presets</code> in <code>scripts/make-thumbnails.mjs</code> and rerun the script.</p>
+    </div>
+    <div class="tabs" role="radiogroup" aria-label="Category" id="tabs"></div>
+    <div id="theme-controls"></div>
+    <label class="toggle"><input type="checkbox" id="guides"> Show margin guides</label>
+    <div class="settings">
+      <div class="settings__head">
+        <h2 id="settings-title">Preset</h2>
+        <button type="button" id="reset">Reset</button>
+        <button type="button" id="copy" class="primary">Copy</button>
+      </div>
+      <textarea id="settings-out" readonly aria-labelledby="settings-title"></textarea>
+    </div>
+  </aside>
+  <main class="images" id="images"></main>
+</div>
+
+<script>
+/*TONE*/
+</script>
+<script id="data" type="application/json">/*DATA*/null</script>
+<script>
+(function () {
+  const data = JSON.parse(document.getElementById("data").textContent);
+  const canvasWidth = data.frame.width * data.scale;
+  const canvasHeight = data.frame.height * data.scale;
+  const types = Object.keys(data.presets);
+  const themeNames = ["light", "dark"];
+  const storageKey = "thumb-tuner-presets:" + JSON.stringify(data.presets);
+  const capitalize = (s) => s[0].toUpperCase() + s.slice(1);
+
+  let presets = structuredClone(data.presets);
+  let current = types.find((t) => data.images.some((i) => i.type === t)) || types[0];
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey));
+    if (saved) { presets = saved.presets; current = saved.current; }
+  } catch {}
+
+  // --- Images ---------------------------------------------------------------
+  // Each image: its contrast map at thumbnail size and its strongest level.
+
+  function readMap(src, width, height) {
+    return new Promise((resolve) => {
+      const source = new Image();
+      source.onload = () => {
+        const read = document.createElement("canvas");
+        read.width = width;
+        read.height = height;
+        const ctx = read.getContext("2d");
+        ctx.drawImage(source, 0, 0);
+        const rgba = ctx.getImageData(0, 0, width, height).data;
+        const values = new Uint8Array(width * height);
+        for (let i = 0; i < values.length; i++) values[i] = rgba[i * 4];
+        resolve(values);
+      };
+      source.src = src;
+    });
+  }
+
+  const loaded = data.images.map((image) => ({ ...image, ready: null, views: {} }));
+  for (const image of loaded) {
+    image.width = canvasWidth;
+    image.height = canvasHeight;
+    image.ready = readMap(image.map, canvasWidth, canvasHeight).then((amounts) => {
+      image.amounts = amounts;
+      const histogram = new Uint32Array(256);
+      for (const a of amounts) histogram[a]++;
+      image.strongest = strongestLevel(histogram);
+    });
+  }
+
+  const imagesEl = document.getElementById("images");
+  const { inset, frame } = data;
+  const guideStyle = `inset:${(inset / frame.height) * 100}% ${(inset / frame.width) * 100}%`;
+
+  function makeCell(themeName, label) {
+    const fig = document.createElement("figure");
+    fig.className = "cell cell--" + themeName;
+    fig.innerHTML = `<div class="frame"></div><figcaption><span>${label}</span><span class="legible"></span><output></output></figcaption>`;
+    return fig;
+  }
+
+  async function showCategory() {
+    imagesEl.innerHTML = "";
+    const images = loaded.filter((i) => i.type === current);
+    if (images.length === 0) {
+      imagesEl.innerHTML = `<p class="empty">No ${current} images yet. Run <code>npm run thumbs -- --type ${current} path/to/image.png</code>, then reopen this page.</p>`;
+      return;
+    }
+    for (const image of images) {
+      const section = document.createElement("section");
+      section.className = "image";
+      const hasRefs = themeNames.some((t) => image.reference && image.reference[t]);
+      section.innerHTML = `<h2></h2><div class="grid${hasRefs ? " grid--refs" : ""}"></div>`;
+      section.querySelector("h2").textContent = image.name;
+      const grid = section.querySelector(".grid");
+      imagesEl.append(section);
+
+      for (const themeName of themeNames) {
+        const cell = makeCell(themeName, `${capitalize(themeName)} · tuned`);
+        const canvas = document.createElement("canvas");
+        canvas.width = image.width;
+        canvas.height = image.height;
+        const frameEl = cell.querySelector(".frame");
+        frameEl.append(canvas);
+        frameEl.insertAdjacentHTML("beforeend", `<span class="guide" style="${guideStyle}"></span>`);
+        grid.append(cell);
+
+        const ctx = canvas.getContext("2d");
+        const view = {
+          canvas, ctx,
+          imageData: ctx.createImageData(image.width, image.height),
+          readout: cell.querySelector("output"),
+          legible: cell.querySelector(".legible"),
+          themeName,
+          image,
+        };
+        image.views[themeName] = view;
+        attachReadout(view);
+
+        if (hasRefs) {
+          const refCell = makeCell(themeName, `${capitalize(themeName)} · Figma`);
+          const ref = image.reference[themeName];
+          refCell.querySelector(".frame").innerHTML = ref
+            ? `<img src="${ref}" alt="Figma design, ${themeName} theme">`
+            : '<p class="empty">No Figma export</p>';
+          grid.append(refCell);
+        }
+      }
+    }
+    await Promise.all(images.map((i) => i.ready));
+    themeNames.forEach(scheduleRender);
+  }
+
+  function attachReadout(view) {
+    view.canvas.addEventListener("mousemove", (event) => {
+      const { width, height } = view.image;
+      const rect = view.canvas.getBoundingClientRect();
+      const x = Math.min(width - 1, Math.floor(((event.clientX - rect.left) / rect.width) * width));
+      const y = Math.min(height - 1, Math.floor(((event.clientY - rect.top) / rect.height) * height));
+      const i = y * width + x;
+      const d = view.imageData.data;
+      const rgb = [d[i * 4], d[i * 4 + 1], d[i * 4 + 2]];
+      const theme = presets[current][view.themeName];
+      const ratio = contrastRatio(rgb, hexToRgb(theme.background));
+      view.readout.innerHTML = `<span class="swatch" style="background:${rgbToHex(rgb)}"></span>${rgbToHex(rgb)} · ${ratio.toFixed(2)}:1`;
+    });
+    view.canvas.addEventListener("mouseleave", () => (view.readout.textContent = ""));
+  }
+
+  const pending = new Set();
+  function scheduleRender(themeName) {
+    if (pending.size === 0) requestAnimationFrame(flush);
+    pending.add(themeName);
+  }
+  function flush() {
+    for (const themeName of pending) {
+      const theme = presets[current][themeName];
+      for (const image of loaded) {
+        const view = image.views[themeName];
+        if (image.type !== current || !view || !image.amounts) continue;
+        const legible = legibility(theme, image.strongest);
+        const lut = buildLut(theme, legible.boost);
+        const out = view.imageData.data;
+        const amounts = image.amounts;
+        for (let i = 0; i < amounts.length; i++) {
+          const l = amounts[i] * 3, o = i * 4;
+          out[o] = lut[l];
+          out[o + 1] = lut[l + 1];
+          out[o + 2] = lut[l + 2];
+          out[o + 3] = 255;
+        }
+        view.ctx.putImageData(view.imageData, 0, 0);
+
+        if (legible.before === null) {
+          view.legible.textContent = "";
+        } else if (legible.boost === 1) {
+          view.legible.textContent = `Strongest marks ${legible.before.toFixed(2)}:1`;
+          view.legible.classList.remove("boosted");
+        } else {
+          view.legible.textContent = `Boosted ×${legible.boost.toFixed(2)}: ${legible.before.toFixed(2)} → ${legible.after.toFixed(2)}:1`;
+          view.legible.classList.add("boosted");
+        }
+      }
+      updateStrip(themeName);
+    }
+    pending.clear();
+  }
+
+  // --- Controls -------------------------------------------------------------
+
+  const controlsEl = document.getElementById("theme-controls");
+  const strips = {};
+
+  // [key, label, min, max, step, group]
+  const fields = [
+    ["minContrast", "Min contrast", 1, 7, 0.1, "Legibility"],
+  ];
+
+  function buildTabs() {
+    const tabs = document.getElementById("tabs");
+    tabs.innerHTML = "";
+    for (const type of types) {
+      const count = loaded.filter((i) => i.type === type).length;
+      const label = document.createElement("label");
+      label.innerHTML = `<input type="radio" name="category" value="${type}"><span>${capitalize(type)} (${count})</span>`;
+      const input = label.querySelector("input");
+      input.checked = type === current;
+      input.addEventListener("change", () => {
+        current = type;
+        save();
+        buildControls();
+        showCategory();
+      });
+      tabs.append(label);
+    }
+  }
+
+  // A colour picker plus hex field bound to theme[key].
+  function colorRow(theme, themeName, key, label) {
+    const row = document.createElement("div");
+    row.className = "control control--color";
+    row.innerHTML = `<span>${label}</span>
+      <input type="color" aria-label="${themeName} ${label} colour">
+      <input type="text" maxlength="7" spellcheck="false" aria-label="${themeName} ${label} hex">`;
+    const [color, hex] = row.querySelectorAll("input");
+    color.value = hex.value = theme[key];
+    color.addEventListener("input", () => { theme[key] = hex.value = color.value; changed(themeName); });
+    hex.addEventListener("change", () => {
+      const v = hex.value.trim().replace(/^#?/, "#").toLowerCase();
+      if (/^#[0-9a-f]{6}$/.test(v)) { theme[key] = color.value = hex.value = v; changed(themeName); }
+      else hex.value = theme[key];
+    });
+    return row;
+  }
+
+  // Diagram (palette) presets: the ramp's colours, background to ink.
+  function buildPaletteControls(fs, theme, themeName) {
+    fs.insertAdjacentHTML("beforeend", `<div class="group">Ramp: background → ink</div>`);
+    for (const [key] of PALETTE_STOPS) fs.append(colorRow(theme, themeName, key, capitalize(key)));
+  }
+
+  function buildControls() {
+    controlsEl.innerHTML = "";
+    controlsEl.style.display = "grid";
+    controlsEl.style.gap = "16px";
+    for (const key of Object.keys(floorControls)) delete floorControls[key];
+    for (const themeName of themeNames) {
+      const theme = presets[current][themeName];
+      const fs = document.createElement("fieldset");
+      fs.innerHTML = `<legend>${capitalize(themeName)} theme</legend>`;
+
+      buildPaletteControls(fs, theme, themeName);
+
+      let group = null;
+      for (const [key, label, min, max, step, groupName] of fields) {
+        if (groupName !== group) {
+          group = groupName;
+          fs.insertAdjacentHTML("beforeend", `<div class="group">${groupName}</div>`);
+        }
+        const row = document.createElement("div");
+        row.className = "control";
+        row.innerHTML = `<span>${label}</span>
+          <input type="range" min="${min}" max="${max}" step="${step}" aria-label="${themeName} ${label}"${key === "hue" ? ' class="hue"' : ""}>
+          <input type="number" min="${min}" max="${key === "midtones" ? 9.99 : max}" step="${step}" aria-label="${themeName} ${label} value">`;
+        const [range, number] = row.querySelectorAll("input");
+        range.value = number.value = theme[key];
+        const set = (raw) => {
+          const decimals = step < 1 ? String(step).split(".")[1].length : 0;
+          let v = Number(raw);
+          if (!Number.isFinite(v)) v = theme[key];
+          v = Math.min(key === "midtones" ? 9.99 : max, Math.max(min, v));
+          v = Number(v.toFixed(decimals));
+          if (key === "inputBlack") v = Math.min(v, theme.inputWhite - 1);
+          if (key === "inputWhite") v = Math.max(v, theme.inputBlack + 1);
+          if (key === "minContrast") v = Math.min(v, maxFloor(theme));
+          theme[key] = v;
+          range.value = number.value = v;
+          changed(themeName);
+        };
+        range.addEventListener("input", () => set(range.value));
+        number.addEventListener("change", () => set(number.value));
+        if (key === "minContrast") {
+          const hint = document.createElement("small");
+          row.firstElementChild.append(document.createElement("br"), hint);
+          floorControls[themeName] = { range, number, hint };
+        }
+        fs.append(row);
+      }
+
+      // The resulting tone ramp, background to ink
+      fs.insertAdjacentHTML("beforeend", `<div class="group">Result: background → ink</div>
+        <div class="strip"></div><div class="strip-note"><span></span><span></span></div>
+        <div class="ramp-warning" role="status"></div>`);
+      strips[themeName] = {
+        strip: fs.querySelector(".strip"),
+        notes: fs.querySelectorAll(".strip-note span"),
+        warning: fs.querySelector(".ramp-warning"),
+      };
+      controlsEl.append(fs);
+      syncFloor(themeName);
+      updateStrip(themeName);
+    }
+    document.getElementById("settings-title").textContent = `${capitalize(current)} preset`;
+    document.getElementById("settings-out").value = settingsText();
+  }
+
+  // The minimum contrast can't go above what the ink reaches (rounded down to
+  // the slider step). When the ink moves closer to the background, the
+  // minimum follows it down.
+  const floorControls = {};
+  const maxFloor = (theme) => Math.max(1, Math.floor(inkContrast(theme) * 10) / 10);
+  function syncFloor(themeName) {
+    const c = floorControls[themeName];
+    if (!c) return;
+    const theme = presets[current][themeName];
+    const max = maxFloor(theme);
+    if (theme.minContrast > max) theme.minContrast = max;
+    c.range.max = c.number.max = max;
+    c.range.value = c.number.value = theme.minContrast;
+    c.hint.textContent = `max ${max}`;
+  }
+
+  function updateStrip(themeName) {
+    const s = strips[themeName];
+    if (!s) return;
+    const theme = presets[current][themeName];
+    const stops = [];
+    for (let i = 0; i <= 16; i++) stops.push(`${rgbToHex(themeColor(theme, i / 16))} ${(i / 16) * 100}%`);
+    s.strip.style.background = `linear-gradient(90deg, ${stops.join(", ")})`;
+    const ink = themeColor(theme, 1);
+    s.notes[0].textContent = theme.background;
+    s.notes[1].textContent = `ink ${rgbToHex(ink)} · ${inkContrast(theme).toFixed(2)}:1`;
+    // Same rule npm test applies: each colour needs more contrast than the one before.
+    const problems = rampProblems(theme);
+    s.warning.textContent = problems.length ? "Flat stretch: " + problems.join("; ") : "";
+  }
+
+  // --- Settings output ------------------------------------------------------
+
+  const out = document.getElementById("settings-out");
+  function themeLine(t) {
+    return "{ " + PALETTE_STOPS.map(([key]) => `${key}: "${t[key]}"`).join(", ") +
+      `, minContrast: ${t.minContrast}` + (t.minVisible !== undefined ? `, minVisible: ${t.minVisible}` : "") + " }";
+  }
+  function settingsText() {
+    const p = presets[current];
+    return `${current}: {\n  light: ${themeLine(p.light)},\n  dark:  ${themeLine(p.dark)},\n},`;
+  }
+
+  function save() {
+    try { localStorage.setItem(storageKey, JSON.stringify({ presets, current })); } catch {}
+  }
+
+  function changed(themeName) {
+    syncFloor(themeName);
+    out.value = settingsText();
+    save();
+    scheduleRender(themeName);
+  }
+
+  document.getElementById("copy").addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    try {
+      await navigator.clipboard.writeText(out.value);
+    } catch {
+      out.select();
+      document.execCommand("copy");
+    }
+    button.textContent = "Copied";
+    setTimeout(() => (button.textContent = "Copy"), 1500);
+  });
+
+  document.getElementById("reset").addEventListener("click", () => {
+    presets[current] = structuredClone(data.presets[current]);
+    save();
+    buildControls();
+    themeNames.forEach(scheduleRender);
+  });
+
+  const guides = document.getElementById("guides");
+  guides.addEventListener("change", () => document.body.classList.toggle("show-guides", guides.checked));
+
+  if (!types.includes(current)) current = types[0];
+  buildTabs();
+  buildControls();
+  showCategory();
+})();
+</script>
+</body>
+</html>

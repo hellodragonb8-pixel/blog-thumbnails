@@ -1,0 +1,12 @@
+# Dependencies (recreated by npm install)
+node_modules/
+
+# Generated thumbnails, previews and working files
+out/
+
+# Images dropped in for processing
+inbox/
+
+# Sample, reference and saved images: kept out of the repository.
+# npm test uses assets/diagrams, assets/graphs and assets/code when they exist.
+assets/
