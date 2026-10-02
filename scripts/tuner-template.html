@@ -214,6 +214,11 @@
       const histogram = new Uint32Array(256);
       for (const a of amounts) histogram[a]++;
       image.strongest = strongestLevel(histogram);
+      const fill = data.boxFill.types.includes(image.type) ? boxFill(histogram, data.boxFill) : null;
+      // The text level scale comes from the script, which checked text on boxes.
+      const scale = image.textScale;
+      const fillCurve = toneCurve(fill, data.boxFill.target, data.boxFill.minScale);
+      image.curve = (d) => fillCurve(d) * scale;
     });
   }
 
@@ -307,8 +312,8 @@
       for (const image of loaded) {
         const view = image.views[themeName];
         if (image.type !== current || !view || !image.amounts) continue;
-        const legible = legibility(theme, image.strongest);
-        const lut = buildLut(theme, legible.boost);
+        const legible = legibility(theme, image.strongest, image.curve);
+        const lut = buildLut(theme, legible.boost, image.curve);
         const out = view.imageData.data;
         const amounts = image.amounts;
         for (let i = 0; i < amounts.length; i++) {

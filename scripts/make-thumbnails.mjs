@@ -11,8 +11,11 @@
 //   5. Colour: desaturate, then map each grey (by its distance from the
 //      background grey) along the category preset's ramp of seven colours,
 //      the same way for every pixel.
-//   6. Contrast: if the image's strongest marks come out below the preset's
-//      minimum contrast, stretch that image's greys until they reach it.
+//   6. Tone: each image gets its own smooth tone curve. Diagrams: a main box
+//      fill darker than the standard is brought to it. Code: text further
+//      from its background than the standard is scaled down to it, as far as
+//      text on boxes stays readable. All: if the strongest marks come out
+//      below the preset's minimum contrast, stretch the greys until they do.
 // The colour curve is always smooth, like Levels: no steps, so icons, shading
 // and soft edges keep their shape.
 // Nothing else changes the image. Options that go beyond the protocol
@@ -56,11 +59,11 @@
 import sharp from "sharp";
 import { access, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { buildLut, greyLevel, hexToRgb, legibility, strongestLevel } from "./tone.mjs";
+import { boxFill, buildLut, greyLevel, hexToRgb, legibility, strongestLevel, textLevel, toneCurve } from "./tone.mjs";
 import { loadInput } from "./svg.mjs";
 import { pathToFileURL } from "node:url";
 import { reviewCrop, SetupError } from "./review-crop.mjs";
-import { checkSavedFile, checkThumbnails } from "./checks.mjs";
+import { checkSavedFile, checkThumbnails, lostText } from "./checks.mjs";
 import Anthropic from "@anthropic-ai/sdk";
 
 // ---------------------------------------------------------------------------
@@ -116,6 +119,23 @@ export const CONFIG = {
   // pale box (a yellow #f5cc84 node) counts as nearly as dark as the black
   // text on it, and the text disappears.
   tintCap: 40,
+
+  // Box fill (PROTOCOL.md, step 6): in these categories, an image whose main
+  // fill (boxes, panels) is darker than `target` gets a tone curve that brings
+  // that fill to `target`, so boxes look the same from diagram to diagram.
+  // Contrast amounts (0-1): 0.14 is evaluation_flow's box fill. A fill counts
+  // when it is at least `minShare` of the content and no darker than `darkest`.
+  // It moves at most to `minScale` of where it was, so lines lighter than the
+  // boxes (connectors) keep at least that much of their strength.
+  boxFill: { types: ["diagram"], target: 0.14, darkest: 0.35, minShare: 0.2, minScale: 0.6 },
+
+  // Text level (PROTOCOL.md, step 6): in these categories, an image whose
+  // typical text sits further from its background than `target` has all its
+  // greys scaled down so the text lands on `target`. Light text on a dark
+  // editor is far from its background, and without this it comes out much
+  // brighter than code from a light screenshot. Contrast amount (0-1): 0.48 is
+  // Screenshot 2026-10-02 095526's text.
+  textLevel: { types: ["code"], target: 0.48 },
 
   // How different from the background a pixel must be (grey levels, 0-255) to
   // count as content when trimming the image's own margins. Raise it for noisy JPEGs.
@@ -499,13 +519,38 @@ async function colorize(prepared, preset, layout, base, opts) {
     .toFile(path.join(opts.workDir ?? opts.out, "tuning", `${base}.png`));
 
   const strongest = strongestLevel(histogram);
+  const fill = CONFIG.boxFill.types.includes(opts.type) ? boxFill(histogram, CONFIG.boxFill) : null;
+  const fillCurve = toneCurve(fill, CONFIG.boxFill.target, CONFIG.boxFill.minScale);
+
+  // Text level: scale the greys down so the typical text lands on the target,
+  // but only as far as text on boxes stays readable in every theme (the "text
+  // on a box" check): a light title bar with small dark text on it would
+  // otherwise fade into its text.
+  const text = CONFIG.textLevel.types.includes(opts.type) ? textLevel(histogram) : null;
+  const wanted = text !== null && text > CONFIG.textLevel.target + 0.01 ? CONFIG.textLevel.target / text : 1;
+  const readableAt = (s) => Object.values(preset).every((theme) => {
+    const c = (d) => fillCurve(d) * s;
+    const lut = buildLut(theme, legibility(theme, strongest, c).boost, c);
+    const out = (i) => { const a = amount[(Math.floor(i / width) + top) * canvasWidth + (i % width) + left] * 3; return [lut[a], lut[a + 1], lut[a + 2]]; };
+    return !lostText(prepared, out);
+  });
+  let scale = wanted;
+  while (scale < 1 && !readableAt(scale)) scale = Math.min(1, scale + 0.05);
+  const curve = (d) => fillCurve(d) * scale;
+
   const accentRgb = hexToRgb(CONFIG.accent.color);
   const images = {};
   const report = [`source: ${sourceIsDark ? "dark" : "light"} (background grey ${bgLevel})`];
+  if (fill !== null && fill > CONFIG.boxFill.target) report.push(`box fill ${fill.toFixed(2)}, brought to ${Math.max(CONFIG.boxFill.target, fill * CONFIG.boxFill.minScale).toFixed(2)}`);
+  if (wanted < 1) {
+    report.push(scale === wanted
+      ? `text level ${text.toFixed(2)}, scaled x${scale.toFixed(2)} to ${CONFIG.textLevel.target}`
+      : `text level ${text.toFixed(2)}, scaled x${scale.toFixed(2)} (not all the way to ${CONFIG.textLevel.target}: text on a box would fade)`);
+  }
 
   for (const [themeName, theme] of Object.entries(preset)) {
-    const legible = legibility(theme, strongest);
-    const lut = buildLut(theme, legible.boost);
+    const legible = legibility(theme, strongest, curve);
+    const lut = buildLut(theme, legible.boost, curve);
     const bgRgb = hexToRgb(theme.background);
 
     const out = Buffer.alloc(canvasWidth * canvasHeight * 3);
@@ -532,7 +577,7 @@ async function colorize(prepared, preset, layout, base, opts) {
     else if (legible.boost === 1) report.push(`${themeName}: strongest marks ${ratio(legible.before)}${capped}`);
     else report.push(`${themeName}: strongest marks ${ratio(legible.before)}, boosted x${legible.boost.toFixed(2)} to ${ratio(legible.after)}${capped}`);
   }
-  return { images, report };
+  return { images, report, textScale: scale };
 }
 
 export async function makeThumbnails(input, opts) {
@@ -553,7 +598,7 @@ export async function makeThumbnails(input, opts) {
 
   const base = path.basename(input, path.extname(input));
   await mkdir(path.join(opts.workDir ?? opts.out, "tuning"), { recursive: true });
-  const { images, report } = await colorize(prepared, preset, layout, base, opts);
+  const { images, report, textScale } = await colorize(prepared, preset, layout, base, opts);
   const checks = checkThumbnails({ config: CONFIG, type: opts.type, prepared, pixels: images });
   const log = opts.quiet ? () => {} : console.log;
 
@@ -617,7 +662,7 @@ export async function makeThumbnails(input, opts) {
     }
   }
 
-  const entry = { name: base, type: opts.type, source: path.relative(opts.out, input).replaceAll("\\", "/"), files, margins };
+  const entry = { name: base, type: opts.type, source: path.relative(opts.out, input).replaceAll("\\", "/"), files, margins, textScale };
   return { entry, checks };
 }
 
@@ -764,10 +809,10 @@ async function writeTuner(outDir, entries) {
       const file = path.join(CONFIG.referenceDir, `${e.name.replace(/-original$/, "")}-${theme}.png`);
       reference[theme] = (await exists(file)) ? path.relative(outDir, file).replaceAll("\\", "/") : null;
     }
-    images.push({ name: e.name, type: e.type, map: await dataUrl(mapFile), reference });
+    images.push({ name: e.name, type: e.type, textScale: e.textScale ?? 1, map: await dataUrl(mapFile), reference });
   }
 
-  const data = { frame: CONFIG.frame, inset: CONFIG.inset, scale: CONFIG.scale, presets: CONFIG.presets, images };
+  const data = { frame: CONFIG.frame, inset: CONFIG.inset, scale: CONFIG.scale, presets: CONFIG.presets, boxFill: CONFIG.boxFill, images };
   const tone = (await readFile(new URL("./tone.mjs", import.meta.url), "utf8")).replace(/^export /gm, "");
   const template = await readFile(new URL("./tuner-template.html", import.meta.url), "utf8");
   const json = JSON.stringify(data).replace(/</g, "\\u003c");
