@@ -20,7 +20,7 @@ Every image goes through the same steps, in this order. Nothing else changes the
    - gets a contrast amount: how far its grey is from the background grey, from 0 (the background itself) to 1 (as far away as the image allows);
    - is given the colour for that amount from its category's ramp, for the theme.
 
-   Every preset in `CONFIG.presets` (diagram, code and graph) is a ramp of seven hex colours per theme, placed at fixed contrast amounts:
+   The diagram and graph presets in `CONFIG.presets` are each a ramp of seven hex colours per theme, placed at fixed contrast amounts:
 
    | Colour | At | Typically catches |
    |---|---|---|
@@ -31,6 +31,14 @@ Every image goes through the same steps, in this order. Nothing else changes the
    | strong | 0.35 | darker boxes and fills |
    | text | 0.5 | grey text, connectors, lines |
    | ink | 0.75 and above | black text and solid marks |
+
+   The code preset has three colours per theme, since code is only text in a few syntax colours:
+
+   | Colour | At | Typically catches |
+   |---|---|---|
+   | background | 0 to 0.1 | the image background, panel borders, highlight bars |
+   | dim | 0.35 | comments, numbers, strings: the paler syntax colours |
+   | text | 0.6 and above | the main code text |
 
    Greys between two stops get an even blend of the two colours. So the curve is smooth: the same grey always gets the same colour, a grey further from the background never gets less contrast, and there are no steps that would distort shading, soft edges or icons. After the first colour that differs from the background, each colour must have more contrast than the one before; equal colours would make a flat stretch where shading disappears.
 6. **Even out the image's tones.** Each image gets its own tone curve, applied to the contrast amounts before the ramp. The curve always rises and has no steps, so this still only changes colours: step 5's rules hold for the result, and the checks prove it.
@@ -65,7 +73,7 @@ These options go beyond the protocol and are off unless you ask for them:
 | Not tiny | A tall image fills at least 60% of the width. If not, run it with `--crop auto` or a manual `--crop`. |
 | Colour only | The same input grey always has the same output colour, and greys further from the background never have less contrast. This fails if anything blurs, smears or redraws the image. |
 | Smooth | Two greys one level apart never get colours more than 12 levels apart. This fails if the colour curve has a step, which turns soft edges and icons into flat blocks. |
-| On palette | Every output colour lies on the preset's ramp, between background and ink. |
+| On palette | Every output colour lies on the preset's ramp, between background and ink (text for code). |
 | Visible | For presets with `minVisible` (graphs): every mark drawn to be seen (at least 25/255 from the background) keeps at least that contrast. It only checks; set the "subtle" colour to reach it. Presets without `minVisible` skip it. |
 | Readable | The strongest marks reach the preset's `minContrast`, or the ink colour's own contrast if that's lower. |
 | Saved file | The saved file, read back, is pixel for pixel what passed the checks above, so the background is still exactly the theme colour. |

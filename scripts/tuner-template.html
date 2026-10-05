@@ -387,10 +387,14 @@
     return row;
   }
 
-  // Diagram (palette) presets: the ramp's colours, background to ink.
+  // The ramp's colours, each once, background to the strongest (ink, or text
+  // for code).
+  const rampKeys = (theme) => [...new Set(stopsFor(theme).map(([key]) => key))];
+  const lastKey = (theme) => rampKeys(theme).at(-1);
+
   function buildPaletteControls(fs, theme, themeName) {
-    fs.insertAdjacentHTML("beforeend", `<div class="group">Ramp: background → ink</div>`);
-    for (const [key] of PALETTE_STOPS) fs.append(colorRow(theme, themeName, key, capitalize(key)));
+    fs.insertAdjacentHTML("beforeend", `<div class="group">Ramp: background → ${lastKey(theme)}</div>`);
+    for (const key of rampKeys(theme)) fs.append(colorRow(theme, themeName, key, capitalize(key)));
   }
 
   function buildControls() {
@@ -441,8 +445,8 @@
         fs.append(row);
       }
 
-      // The resulting tone ramp, background to ink
-      fs.insertAdjacentHTML("beforeend", `<div class="group">Result: background → ink</div>
+      // The resulting tone ramp, background to the strongest colour
+      fs.insertAdjacentHTML("beforeend", `<div class="group">Result: background → ${lastKey(theme)}</div>
         <div class="strip"></div><div class="strip-note"><span></span><span></span></div>
         <div class="ramp-warning" role="status"></div>`);
       strips[themeName] = {
@@ -483,7 +487,7 @@
     s.strip.style.background = `linear-gradient(90deg, ${stops.join(", ")})`;
     const ink = themeColor(theme, 1);
     s.notes[0].textContent = theme.background;
-    s.notes[1].textContent = `ink ${rgbToHex(ink)} · ${inkContrast(theme).toFixed(2)}:1`;
+    s.notes[1].textContent = `${lastKey(theme)} ${rgbToHex(ink)} · ${inkContrast(theme).toFixed(2)}:1`;
     // Same rule npm test applies: each colour needs more contrast than the one before.
     const problems = rampProblems(theme);
     s.warning.textContent = problems.length ? "Flat stretch: " + problems.join("; ") : "";
@@ -493,7 +497,7 @@
 
   const out = document.getElementById("settings-out");
   function themeLine(t) {
-    return "{ " + PALETTE_STOPS.map(([key]) => `${key}: "${t[key]}"`).join(", ") +
+    return "{ " + rampKeys(t).map((key) => `${key}: "${t[key]}"`).join(", ") +
       `, minContrast: ${t.minContrast}` + (t.minVisible !== undefined ? `, minVisible: ${t.minVisible}` : "") + " }";
   }
   function settingsText() {

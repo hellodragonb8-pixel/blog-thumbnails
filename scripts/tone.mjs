@@ -80,9 +80,31 @@ export const PALETTE_STOPS = [
   ["ink", 0.75],
 ];
 
+// Code uses three colours instead of seven: the background and two text
+// colours. Code has no fills or icons to shade, only text in a few syntax
+// colours, so the paler ones (comments, numbers, strings) blend towards "dim"
+// and the main text towards "text". Still an even blend between stops, so
+// anti-aliased edges stay smooth.
+//   0-0.1  background  the image background, panel borders, highlight bars
+//   0.35   dim         comments, numbers, the paler syntax colours
+//   0.6+   text        the main code text (CONFIG.textLevel puts its typical
+//                      level, edges included, at 0.48, so the cores reach this)
+export const CODE_STOPS = [
+  ["background", 0],
+  ["background", 0.1],
+  ["dim", 0.35],
+  ["text", 0.6],
+];
+
+// The stops a theme uses: three for a theme with a "dim" colour (code),
+// otherwise the seven of PALETTE_STOPS.
+export function stopsFor(theme) {
+  return "dim" in theme ? CODE_STOPS : PALETTE_STOPS;
+}
+
 // Colour for contrast amount d (0..1) in one theme.
 export function themeColor(theme, d) {
-  const stops = PALETTE_STOPS.map(([key, at]) => ({ at, rgb: hexToRgb(theme[key]) }));
+  const stops = stopsFor(theme).map(([key, at]) => ({ at, rgb: hexToRgb(theme[key]) }));
   if (d <= 0) return stops[0].rgb;
   let i = 1;
   while (i < stops.length - 1 && d > stops[i].at) i++;
@@ -99,7 +121,7 @@ export function rampProblems(theme) {
   const bg = hexToRgb(theme.background);
   const problems = [];
   let previous = null;
-  for (const [key] of PALETTE_STOPS.slice(1)) {
+  for (const [key] of stopsFor(theme).slice(1)) {
     if (!/^#[0-9a-f]{6}$/i.test(theme[key] ?? "")) { problems.push(`${key} isn't a hex colour`); continue; }
     const ratio = contrastRatio(hexToRgb(theme[key]), bg);
     if (previous && previous.ratio > 1.01 && ratio < previous.ratio + 0.02) {

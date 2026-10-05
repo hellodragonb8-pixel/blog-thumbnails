@@ -9,8 +9,8 @@
 //   4. Layout: trim empty margins, fit the whole image inside the 32px
 //      margins, centre it on the 716 x 396 canvas.
 //   5. Colour: desaturate, then map each grey (by its distance from the
-//      background grey) along the category preset's ramp of seven colours,
-//      the same way for every pixel.
+//      background grey) along the category preset's ramp of colours (seven,
+//      or three for code), the same way for every pixel.
 //   6. Tone: each image gets its own smooth tone curve. Diagrams: a main box
 //      fill darker than the standard is brought to it. Code: text further
 //      from its background than the standard is scaled down to it, as far as
@@ -67,10 +67,10 @@ export const CONFIG = {
   inset: 32,                          // minimum margin on every side, in Figma px
   scale: 2,                           // export at 2x for sharp screens -> 716 x 396
 
-  // One preset per image category, each with a light and a dark theme. Every
-  // theme is a ramp of seven colours: each grey in the image, by how far it is
-  // from the image's background, gets a blend of the two nearest colours
-  // (positions in tone.mjs, PALETTE_STOPS):
+  // One preset per image category, each with a light and a dark theme. Each
+  // theme is a ramp of seven colours (code has three, see below): each grey in
+  // the image, by how far it is from the image's background, gets a blend of
+  // the two nearest colours (positions in tone.mjs, PALETTE_STOPS):
   //   background  the image background becomes this (the thumbnail background)
   //   faint       outlines, the palest fills, soft edges
   //   subtle      the lightest marks drawn to be seen
@@ -93,9 +93,11 @@ export const CONFIG = {
       light: { background: "#f4f5f6", faint: "#eff1f3", subtle: "#e9edf0", medium: "#d8dee4", strong: "#b7c6d0", text: "#81898f", ink: "#737a7f", minContrast: 3 },
       dark:  { background: "#0b0c0d", faint: "#111314", subtle: "#17191b", medium: "#202326", strong: "#353b40", text: "#797f84", ink: "#8a9095", minContrast: 3 },
     },
+    // Code: three colours (tone.mjs, CODE_STOPS): background, dim for the
+    // paler syntax colours (comments, numbers, strings), text for the rest.
     code: {
-      light: { background: "#f4f5f6", faint: "#f4f5f6", subtle: "#f4f5f6", medium: "#dce2e6", strong: "#bac5ce", text: "#9eadb8", ink: "#8293a1", minContrast: 2 },
-      dark:  { background: "#0b0c0d", faint: "#0c0d0e", subtle: "#101112", medium: "#1a1c1e", strong: "#2f3437", text: "#4b5358", ink: "#d5e6f2", minContrast: 3.1 },
+      light: { background: "#f4f5f6", dim: "#9ba9b4", text: "#8595a3", minContrast: 2 },
+      dark:  { background: "#0b0c0d", dim: "#61696f", text: "#859098", minContrast: 3.1 },
     },
     graph: {
       light: { background: "#f4f5f6", faint: "#e5e7ea", subtle: "#d5d9dd", medium: "#d1d5da", strong: "#bfc5ca", text: "#abb3b9", ink: "#a4acb3", minContrast: 2.1, minVisible: 1.3 },

@@ -45,7 +45,7 @@ npm run thumbs -- --type graph path/to/post-image.png
 In short (the full rules are in [PROTOCOL.md](PROTOCOL.md)):
 
 1. Find the background, remove a frame around the content, trim empty margins and fit the whole image inside a 32px margin.
-2. Turn each pixel into a grey by how bright it looks, then into a colour by how far that grey is from the background, along the category's ramp of seven colours. The same grey always gets the same colour.
+2. Turn each pixel into a grey by how bright it looks, then into a colour by how far that grey is from the background, along the category's ramp of colours: seven for diagrams and graphs, three for code (background, dim and text). The same grey always gets the same colour.
 3. Even out each image's tones: diagram box fills come out at one standard shade, code text at one standard brightness, and faint images are brought up to a minimum contrast.
 4. Save both files lossless, so the theme backgrounds are exactly `#f4f5f6` and `#0b0c0d`.
 
