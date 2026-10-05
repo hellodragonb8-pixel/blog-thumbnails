@@ -1,4 +1,4 @@
-// Title cards (PROTOCOL.md, "Text-only thumbnails"): the thumbnails for a post without
+// Title cards (text-only thumbnails): the thumbnails for a post without
 // an image. The post's short title, read from its markdown file, is set in the
 // title font and centred on each theme's background. Settings are in
 // CONFIG.titleCard (make-thumbnails.mjs).

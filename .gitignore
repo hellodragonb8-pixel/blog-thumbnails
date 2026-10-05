@@ -7,6 +7,5 @@ out/
 # Images and posts dropped in for processing
 inbox/
 
-# Sample, reference and saved images, and sample posts: kept out of the repository.
-# npm test uses assets/diagrams, assets/graphs, assets/code and assets/text when they exist.
+# Sample images and posts: kept out of the repository.
 assets/

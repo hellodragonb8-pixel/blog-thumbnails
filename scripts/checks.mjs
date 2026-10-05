@@ -1,7 +1,4 @@
-// The protocol checks (PROTOCOL.md, "The test"), run on one image's two
-// thumbnails. Used by `npm test` (protocol.test.mjs) and by the inbox command
-// (`npm run thumbs` with no arguments), so every thumbnail that's made gets
-// the same checks.
+// The protocol checks, run on both thumbnails of every image that's made.
 //
 // checkThumbnails() returns a list of results:
 //   { name, theme, ok, skipped, message }
@@ -59,7 +56,7 @@ export function checkThumbnails({ config, type, prepared, pixels }) {
   const right = W - prepared.width - left, bottom = H - prepared.height - top;
   const inContent = (x, y) => x >= left && x < left + prepared.width && y >= top && y < top + prepared.height;
 
-  // Contrast amount (0-255) of an input grey, as PROTOCOL.md defines it.
+  // Contrast amount (0-255) of an input grey, as the colour step defines it.
   const level = prepared.bgLevel, dark = level < 128;
   const amountOf = (grey) => Math.round(Math.min(1, Math.abs(grey - level) / ((dark ? 255 - level : level) || 1)) * 255);
 
@@ -358,7 +355,7 @@ export function lostText(prepared, out) {
 }
 
 // ---------------------------------------------------------------------------
-// Title cards (PROTOCOL.md, "Text-only thumbnails"): a post without an image gets its
+// Title cards (text-only thumbnails): a post without an image gets its
 // title set in type. These checks replace the colour checks above, since no
 // image was recoloured.
 // ---------------------------------------------------------------------------

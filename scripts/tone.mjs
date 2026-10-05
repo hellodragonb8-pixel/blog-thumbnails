@@ -1,6 +1,4 @@
-// Colour mapping shared by make-thumbnails.mjs and the tuner page.
-// The tuner inlines this file with the "export" keywords removed, so keep it to
-// plain top-level functions with no imports.
+// Colour mapping, used by make-thumbnails.mjs and checks.mjs.
 //
 // Every pixel arrives as a "contrast amount" d from 0 to 255: how far its grey
 // is from the image background's grey.
@@ -8,15 +6,11 @@
 //   255 = as far from the background as possible (black on a white image,
 //         white on a dark screenshot)
 // The same d always gives the same colour within a theme. This is the only
-// thing that changes a pixel's colour (see PROTOCOL.md).
+// thing that changes a pixel's colour.
 
 export function hexToRgb(hex) {
   const n = parseInt(hex.replace("#", ""), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-export function rgbToHex(rgb) {
-  return "#" + rgb.map((v) => v.toString(16).padStart(2, "0")).join("");
 }
 
 export function clamp01(v) {
@@ -111,25 +105,6 @@ export function themeColor(theme, d) {
   const a = stops[i - 1], b = stops[i];
   const t = clamp01((d - a.at) / (b.at - a.at));
   return a.rgb.map((c, ch) => Math.round(c + (b.rgb[ch] - c) * t));
-}
-
-// Problems with a theme's ramp, as messages (empty when it's fine). After the
-// first stop that differs from the background, each stop must have more
-// contrast than the one before: two equal stops make a flat stretch, where
-// everything in between gets one colour and shading flattens out.
-export function rampProblems(theme) {
-  const bg = hexToRgb(theme.background);
-  const problems = [];
-  let previous = null;
-  for (const [key] of stopsFor(theme).slice(1)) {
-    if (!/^#[0-9a-f]{6}$/i.test(theme[key] ?? "")) { problems.push(`${key} isn't a hex colour`); continue; }
-    const ratio = contrastRatio(hexToRgb(theme[key]), bg);
-    if (previous && previous.ratio > 1.01 && ratio < previous.ratio + 0.02) {
-      problems.push(`${key} (${ratio.toFixed(2)}:1) needs more contrast than ${previous.key} (${previous.ratio.toFixed(2)}:1)`);
-    }
-    previous = { key, ratio };
-  }
-  return problems;
 }
 
 // Box fill (diagrams): the image's main fill, the most common grey between

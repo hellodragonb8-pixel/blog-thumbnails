@@ -1,7 +1,7 @@
 // Turns a blog image into two homepage thumbnails, one per theme:
 //   <name>-light.webp and <name>-dark.webp
 //
-// It follows the fixed protocol in PROTOCOL.md, which `npm test` checks:
+// It follows a fixed protocol, and checks every thumbnail against it:
 //   1. Load the image as it looks (first frame, transparency on white,
 //      SVG colours resolved).
 //   2. Background: the image's most common colour.
@@ -22,18 +22,16 @@
 // (automatic crop, accent colour) are off unless asked for.
 //
 // Posts without an image get a title card instead (--type text): their short
-// title, read from the post's markdown file, set in type (title-card.mjs,
-// PROTOCOL.md "Text-only thumbnails").
+// title, read from the post's markdown file, set in type (title-card.mjs).
 //
-// Every run also updates, in the output folder:
-//   preview.html  all thumbnails in the folder, in both themes
-//   tuner.html    the preset settings as live controls, per category
+// Every run also updates preview.html in the output folder: all thumbnails in
+// the folder, in both themes.
 //
 // Usage:
 //   npm run thumbs
 //     makes thumbnails for every image in inbox/diagram, inbox/graph and
 //     inbox/code, and a title card for every post (.md) in inbox/text, into
-//     out/ (see HOW-TO-THUMBNAILS.md)
+//     out/ (see README.md)
 //   npm run thumbs -- --type graph assets/chart.png [more images...] [options]
 //     one or more images, with options
 //
@@ -59,18 +57,17 @@
 // Thumbnails are always saved as lossless WebP, for the web.
 
 import sharp from "sharp";
-import { access, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { boxFill, buildLut, greyLevel, hexToRgb, legibility, strongestLevel, textLevel, toneCurve } from "./tone.mjs";
 import { loadInput } from "./svg.mjs";
-import { pathToFileURL } from "node:url";
 import { checkSavedFile, checkThumbnails, checkTitleCard, inkMargins, lostText } from "./checks.mjs";
 import { readTitle, renderTitleCard } from "./title-card.mjs";
 
 // ---------------------------------------------------------------------------
 // Settings
 // ---------------------------------------------------------------------------
-export const CONFIG = {
+const CONFIG = {
   frame: { width: 358, height: 198 }, // Figma frame, in Figma px
   inset: 32,                          // minimum margin on every side, in Figma px
   scale: 2,                           // export at 2x for sharp screens -> 716 x 396
@@ -94,8 +91,7 @@ export const CONFIG = {
   //               image is flagged NEEDS A LOOK. Set it by choosing a
   //               "subtle" colour with that contrast.
   // After the first colour that differs from the background, each colour must
-  // have more contrast than the one before (npm test checks this).
-  // Tune these live in <out>/tuner.html, then paste the copied preset here.
+  // have more contrast than the one before.
   presets: {
     diagram: {
       light: { background: "#f4f5f6", faint: "#eff1f3", subtle: "#e9edf0", medium: "#d8dee4", strong: "#b7c6d0", text: "#81898f", ink: "#737a7f", minContrast: 3 },
@@ -117,13 +113,13 @@ export const CONFIG = {
   // colourfulness (0-255) counts as distance from the background, on top of
   // its brightness. 0 = plain desaturation. Keeps pale tinted boxes (a pale
   // blue card on a grey page) from turning into the page grey.
-  tint: { diagram: 1, code: 0, graph: 0 }, // see PROTOCOL.md, step 5
+  tint: { diagram: 1, code: 0, graph: 0 },
   // Most the tint can add (grey levels). Without a limit, a strongly coloured
   // pale box (a yellow #f5cc84 node) counts as nearly as dark as the black
   // text on it, and the text disappears.
   tintCap: 40,
 
-  // Box fill (PROTOCOL.md, step 6): in these categories, an image whose main
+  // Box fill: in these categories, an image whose main
   // fill (boxes, panels) is darker than `target` gets a tone curve that brings
   // that fill to `target`, so boxes look the same from diagram to diagram.
   // Contrast amounts (0-1): 0.14 is evaluation_flow's box fill. A fill counts
@@ -132,7 +128,7 @@ export const CONFIG = {
   // boxes (connectors) keep at least that much of their strength.
   boxFill: { types: ["diagram"], target: 0.14, darkest: 0.35, minShare: 0.2, minScale: 0.6 },
 
-  // Text level (PROTOCOL.md, step 6): in these categories, an image whose
+  // Text level: in these categories, an image whose
   // typical text sits further from its background than `target` has all its
   // greys scaled down so the text lands on `target`. Light text on a dark
   // editor is far from its background, and without this it comes out much
@@ -140,7 +136,7 @@ export const CONFIG = {
   // Screenshot 2026-10-02 095526's text.
   textLevel: { types: ["code"], target: 0.48 },
 
-  // Title cards (PROTOCOL.md, "Text-only thumbnails"): for a post without an image, its
+  // Title cards (text-only thumbnails): for a post without an image, its
   // short title (TOCTitle) on the theme background. Sizes in Figma px.
   titleCard: {
     font: ["SF Pro Display", "SF Pro"], // installed system font: the first one found
@@ -173,10 +169,6 @@ export const CONFIG = {
     minSaturation: 0.3, // greyer than this stays grey
     boost: 2,           // how quickly faint blue reaches full accent strength
   },
-
-  // Figma exports to compare against in the tuner: <referenceDir>/<name>-light.png
-  // and -dark.png, where <name> is the image name without "-original".
-  referenceDir: "assets/figma",
 };
 
 // ---------------------------------------------------------------------------
@@ -420,7 +412,7 @@ function autoCropDirection(box) {
 
 // Crops (if asked), removes frames, trims the image's own margins and fits
 // what's left into the frame.
-export async function prepare(input, opts) {
+async function prepare(input, opts) {
   const { frame, inset, scale } = CONFIG;
   const boxWidth = (frame.width - 2 * inset) * scale;
   const boxHeight = (frame.height - 2 * inset) * scale;
@@ -497,18 +489,17 @@ export async function prepare(input, opts) {
   };
 }
 
-// The colour step (PROTOCOL.md, steps 5 and 6): every pixel's grey becomes a
+// The colour step (protocol steps 5 and 6): every pixel's grey becomes a
 // contrast amount, which the preset maps to a colour, the same way for every
 // pixel. Returns the themed canvases and report lines.
-async function colorize(prepared, preset, layout, base, opts) {
+function colorize(prepared, preset, layout, opts) {
   const { rgb, channels, grey, width, height, bgLevel } = prepared;
   const { canvasWidth, canvasHeight, left, top } = layout;
   const sourceIsDark = opts.source === "auto" ? bgLevel < 128 : opts.source === "dark";
 
   // Contrast amount per pixel on the full canvas (0 = background, 255 = as far
   // from the background as the image allows), measured from the image's own
-  // background so that it becomes the theme background exactly. The tuner
-  // recolours this map with the same code as below.
+  // background so that it becomes the theme background exactly.
   const amount = Buffer.alloc(canvasWidth * canvasHeight, 0);
   const accent = new Float32Array(canvasWidth * canvasHeight);
   const histogram = new Uint32Array(256);
@@ -527,10 +518,6 @@ async function colorize(prepared, preset, layout, base, opts) {
       }
     }
   }
-
-  await sharp(amount, { raw: { width: canvasWidth, height: canvasHeight, channels: 1 } })
-    .png()
-    .toFile(path.join(opts.workDir ?? opts.out, "tuning", `${base}.png`));
 
   const strongest = strongestLevel(histogram);
   const fill = CONFIG.boxFill.types.includes(opts.type) ? boxFill(histogram, CONFIG.boxFill) : null;
@@ -591,10 +578,10 @@ async function colorize(prepared, preset, layout, base, opts) {
     else if (legible.boost === 1) report.push(`${themeName}: strongest marks ${ratio(legible.before)}${capped}`);
     else report.push(`${themeName}: strongest marks ${ratio(legible.before)}, boosted x${legible.boost.toFixed(2)} to ${ratio(legible.after)}${capped}`);
   }
-  return { images, report, textScale: scale };
+  return { images, report };
 }
 
-export async function makeThumbnails(input, opts) {
+async function makeThumbnails(input, opts) {
   if (opts.type === "text") return makeTitleCard(input, opts);
   const preset = CONFIG.presets[opts.type];
   const prepared = await prepare(input, opts);
@@ -612,8 +599,7 @@ export async function makeThumbnails(input, opts) {
   const { left, top } = layout;
 
   const base = path.basename(input, path.extname(input));
-  await mkdir(path.join(opts.workDir ?? opts.out, "tuning"), { recursive: true });
-  const { images, report, textScale } = await colorize(prepared, preset, layout, base, opts);
+  const { images, report } = colorize(prepared, preset, layout, opts);
   const checks = checkThumbnails({ config: CONFIG, type: opts.type, prepared, pixels: images });
   const log = opts.quiet ? () => {} : console.log;
 
@@ -636,7 +622,7 @@ export async function makeThumbnails(input, opts) {
     describeChecks(checks).map((line) => `  ${line}`).join("\n"),
   );
 
-  const entry = { name: base, type: opts.type, source: path.relative(opts.out, input).replaceAll("\\", "/"), files, margins, textScale };
+  const entry = { name: base, type: opts.type, source: path.relative(opts.out, input).replaceAll("\\", "/"), files, margins };
   return { entry, checks };
 }
 
@@ -659,7 +645,7 @@ async function saveThemes(images, base, opts) {
   return { files, saved };
 }
 
-// A title card (PROTOCOL.md, "Text-only thumbnails"): the post's short title, read
+// A title card (a text-only thumbnail): the post's short title, read
 // from its markdown file, set in the title font on each theme's background.
 async function makeTitleCard(input, opts) {
   const title = readTitle(await readFile(input, "utf8"));
@@ -822,35 +808,6 @@ async function writePreview(outDir, entries) {
   await writeFile(path.join(outDir, "preview.html"), html);
 }
 
-// The tuner: tuner-template.html with tone.mjs, the presets and every image's
-// contrast map built in. The maps are embedded as data URLs because a page
-// opened from disk isn't allowed to read pixels from image files.
-async function writeTuner(outDir, entries) {
-  const exists = (file) => access(file).then(() => true, () => false);
-  const images = [];
-  const dataUrl = async (file) => `data:image/png;base64,${(await readFile(file)).toString("base64")}`;
-  for (const e of entries) {
-    const mapFile = path.join(outDir, "tuning", `${e.name}.png`);
-    if (!CONFIG.presets[e.type] || !(await exists(mapFile))) continue;
-
-    const reference = {};
-    for (const theme of ["light", "dark"]) {
-      const file = path.join(CONFIG.referenceDir, `${e.name.replace(/-original$/, "")}-${theme}.png`);
-      reference[theme] = (await exists(file)) ? path.relative(outDir, file).replaceAll("\\", "/") : null;
-    }
-    images.push({ name: e.name, type: e.type, textScale: e.textScale ?? 1, map: await dataUrl(mapFile), reference });
-  }
-
-  const data = { frame: CONFIG.frame, inset: CONFIG.inset, scale: CONFIG.scale, presets: CONFIG.presets, boxFill: CONFIG.boxFill, images };
-  const tone = (await readFile(new URL("./tone.mjs", import.meta.url), "utf8")).replace(/^export /gm, "");
-  const template = await readFile(new URL("./tuner-template.html", import.meta.url), "utf8");
-  const json = JSON.stringify(data).replace(/</g, "\\u003c");
-  await writeFile(
-    path.join(outDir, "tuner.html"),
-    template.replace("/*TONE*/", () => tone).replace("/*DATA*/null", () => json),
-  );
-}
-
 // Remembers every thumbnail made into this folder, so the preview shows them all.
 async function updateManifest(outDir, made) {
   const file = path.join(outDir, "manifest.json");
@@ -867,9 +824,9 @@ async function updateManifest(outDir, made) {
 
 // ---------------------------------------------------------------------------
 
-// The protocol's defaults (PROTOCOL.md). Options that go beyond it, such as
-// the automatic crop, are off unless asked for.
-export const DEFAULT_OPTIONS = {
+// The protocol's defaults. Options that go beyond it, such as the automatic
+// crop, are off unless asked for.
+const DEFAULT_OPTIONS = {
   type: null, crop: "off", out: "assets/thumbs", source: "auto", fit: "contain", frames: "remove",
   accent: "off",
 };
@@ -886,8 +843,8 @@ function parseArgs(argv) {
 
 // The inbox: `npm run thumbs` with no arguments makes thumbnails for every
 // image in inbox/<category>/ and writes them to a fresh out/ folder, with
-// tall images cropped automatically and every image checked. Working files
-// (the tuner, its maps, the list of images made) go to out/_work/.
+// tall images cropped automatically and every image checked. The list of
+// images made goes to out/_work/.
 const INBOX = "inbox";
 const OUT = "out";
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif", ".tif", ".tiff", ".svg"]);
@@ -924,7 +881,7 @@ async function runInbox() {
     }
     names.set(name, file);
     try {
-      const { entry, checks } = await makeThumbnails(file, { ...DEFAULT_OPTIONS, type, out: OUT, workDir, crop: "auto", quiet: true });
+      const { entry, checks } = await makeThumbnails(file, { ...DEFAULT_OPTIONS, type, out: OUT, crop: "auto", quiet: true });
       made.push(entry);
       const outputs = Object.values(entry.files).map((f) => path.join(OUT, f)).join(", ");
       const problems = describeChecks(checks);
@@ -945,7 +902,6 @@ async function runInbox() {
 
   const entries = await updateManifest(workDir, made);
   await writePreview(OUT, entries);
-  await writeTuner(workDir, entries);
   console.log(`\n${ready} of ${jobs.length} ready. See them all in ${path.join(OUT, "preview.html")}.`);
 }
 
@@ -966,10 +922,7 @@ async function main() {
   for (const input of opts.inputs) made.push((await makeThumbnails(input, opts)).entry);
   const entries = await updateManifest(opts.out, made);
   await writePreview(opts.out, entries);
-  await writeTuner(opts.out, entries);
   console.log(`Preview: ${path.join(opts.out, "preview.html")}`);
-  console.log(`Tuner:   ${path.join(opts.out, "tuner.html")}`);
 }
 
-// Run as a command; when imported (by the protocol test), just export.
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();
+await main();

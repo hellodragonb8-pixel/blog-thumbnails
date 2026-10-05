@@ -3,8 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "thumbs": "node scripts/make-thumbnails.mjs",
-    "test": "node --test scripts/protocol.test.mjs"
+    "thumbs": "node scripts/make-thumbnails.mjs"
   },
   "dependencies": {
     "sharp": "^0.35.5-rc.0"
