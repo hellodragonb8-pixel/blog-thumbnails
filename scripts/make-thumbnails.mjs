@@ -23,7 +23,7 @@
 //
 // Posts without an image get a title card instead (--type text): their short
 // title, read from the post's markdown file, set in type (title-card.mjs,
-// PROTOCOL.md "Title cards").
+// PROTOCOL.md "Text-only thumbnails").
 //
 // Every run also updates, in the output folder:
 //   preview.html  all thumbnails in the folder, in both themes
@@ -140,7 +140,7 @@ export const CONFIG = {
   // Screenshot 2026-10-02 095526's text.
   textLevel: { types: ["code"], target: 0.48 },
 
-  // Title cards (PROTOCOL.md, "Title cards"): for a post without an image, its
+  // Title cards (PROTOCOL.md, "Text-only thumbnails"): for a post without an image, its
   // short title (TOCTitle) on the theme background. Sizes in Figma px.
   titleCard: {
     font: ["SF Pro Display", "SF Pro"], // installed system font: the first one found
@@ -659,7 +659,7 @@ async function saveThemes(images, base, opts) {
   return { files, saved };
 }
 
-// A title card (PROTOCOL.md, "Title cards"): the post's short title, read
+// A title card (PROTOCOL.md, "Text-only thumbnails"): the post's short title, read
 // from its markdown file, set in the title font on each theme's background.
 async function makeTitleCard(input, opts) {
   const title = readTitle(await readFile(input, "utf8"));

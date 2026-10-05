@@ -1,6 +1,6 @@
 # Thumbnail protocol
 
-The fixed rules `scripts/make-thumbnails.mjs` follows to turn a blog image into two homepage thumbnails, one for the light theme and one for the dark theme. `npm test` checks every sample image against them. Posts without an image get a title card instead, with its own rules: see [Title cards](#title-cards).
+The fixed rules `scripts/make-thumbnails.mjs` follows to turn a blog image into two homepage thumbnails, one for the light theme and one for the dark theme. `npm test` checks every sample image against them. Posts without an image get a text-only thumbnail instead, with its own spec and rules: see [Text-only thumbnails](#text-only-thumbnails).
 
 ## What the script does
 
@@ -61,19 +61,42 @@ These options go beyond the protocol and are off unless you ask for them:
 | `--frames keep` | Skips step 3. |
 | `--source light` / `--source dark` | Overrides step 2's dark-image detection. |
 
-## Title cards
+## Text-only thumbnails
 
-A post without an image gets a title card: its short title set in type on the theme background. The script makes it from the post's markdown file (`scripts/title-card.mjs`, settings in `CONFIG.titleCard`). No image is recoloured, so steps 1 to 6 don't apply; these rules do.
+A post without an image gets a text-only thumbnail (a title card, in the code): its short title set in type on the theme background. The script makes it from the post's markdown file (`scripts/title-card.mjs`). No image is recoloured, so steps 1 to 6 don't apply; this spec and the rules below do.
+
+### Spec
+
+Sizes in Figma px, in the 358 × 198 frame. The files are exported at 2x, 716 × 396. The settings are in `CONFIG.titleCard`.
+
+| Property | Value |
+|---|---|
+| Text | The post's `TOCTitle`, as written |
+| Font family | SF Pro (SF Pro Display at this size) |
+| Weight | Semibold (600) |
+| Size | 30px |
+| Line height | 34px; each line's baseline is 28px below the top of its line |
+| Letter spacing | −1% (−0.3px) |
+| Alignment | Centred across the frame; the lines centred as a block from top to bottom |
+| Text width | At most 294px: the frame minus a 32px margin on each side |
+| Lines | At most 3, split as evenly as possible |
+| Light theme | Text `#1b2022` on `#f4f5f6` |
+| Dark theme | Text `#989fa4` on `#0b0c0d` |
+| File | Lossless WebP, `<name>-light.webp` and `<name>-dark.webp` |
+
+| Light | Dark |
+|---|---|
+| ![Text-only thumbnail, light theme: "Introducing the VS Code Insiders Podcast" in two centred lines](docs/text-only-example-light.png) | ![Text-only thumbnail, dark theme: the same title in grey on near-black](docs/text-only-example-dark.png) |
+
+### Rules
 
 1. **The title is the post's `TOCTitle`,** from the front matter at the top of its `.md` file: the short title the blog archive lists ("The Agent Host"), not the `PageTitle` at the top of the post ("Introducing the Agent Host for persistent, portable agent sessions"). The text is used as it is: the script never shortens or rewords it. A post without a `TOCTitle` fails.
-2. **The font is SF Pro Semibold,** 30px, 34px line height, −1% letter spacing (−0.3px). It has to be installed on the computer that runs the script; the script checks that it really is, because a missing font is quietly replaced by another, and fails if not. SF Pro isn't in the repository.
-3. **The colours are fixed.** Light: text `#1b2022` on `#f4f5f6`. Dark: text `#989fa4` on `#0b0c0d`. The backgrounds are the same as the image thumbnails', and locked the same way.
-4. **The text sits inside the 32px margins,** so each line is at most 294px wide. The title is split between words into as few lines as fit, and of those, the most even split, so the last line isn't a single word left on its own ("Announcing / Private Marketplace / for VS Code").
+2. **SF Pro has to be installed** on the computer that runs the script. The script checks that it really is, because a missing font is quietly replaced by another, and fails if not. SF Pro isn't in the repository.
+3. **The colours are fixed** (see the spec). The backgrounds are the same as the image thumbnails', and locked the same way.
+4. **The title is split between words** into as few lines as fit in the text width, and of those, the most even split, so the last line isn't a single word left on its own ("Announcing / Private Marketplace / for VS Code").
 5. **At most 3 lines.** Three 34px lines are all that fit in the 134px between the top and bottom margins. A longer title is still made, but marked NEEDS A LOOK: ask the author for a shorter `TOCTitle`.
-6. **The text is centred** across the frame, and the lines are centred as a block from top to bottom, with each line's baseline 28px below the top of its 34px line, as in the Figma frames.
-7. **Save** both as lossless WebP, like the image thumbnails.
 
-Every title card is checked:
+Every text-only thumbnail is checked:
 
 | Check | Passes when |
 |---|---|
@@ -108,7 +131,7 @@ The first nine checks are the protocol: a failure means the script broke a rule.
 
 To add a sample, drop the image in the matching folder. If it's one the last two checks should flag, add it to `EXPECTED_FLAGS`.
 
-For title cards, `npm test` checks the rules above: reading the `TOCTitle`, splitting titles into lines, and that the backgrounds match the image presets. When SF Pro is installed, it also makes a title card for every post in `assets/text` and runs the checks on it. To add a sample, drop a post's `.md` file there; the posts are in the vscode-docs repository, under `blogs/`.
+For text-only thumbnails, `npm test` checks the rules above: reading the `TOCTitle`, splitting titles into lines, and that the backgrounds match the image presets. When SF Pro is installed, it also makes a text-only thumbnail for every post in `assets/text` and runs the checks on it. To add a sample, drop a post's `.md` file there; the posts are in the vscode-docs repository, under `blogs/`.
 
 ## Known limits
 

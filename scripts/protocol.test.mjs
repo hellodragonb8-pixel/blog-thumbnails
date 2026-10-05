@@ -26,7 +26,7 @@
 // flagging good images.
 //
 // Title cards (posts without an image) have their own rules and checks
-// (PROTOCOL.md, "Title cards"): reading the TOCTitle, splitting it into
+// (PROTOCOL.md, "Text-only thumbnails"): reading the TOCTitle, splitting it into
 // lines, and, when the title font is installed, every post in assets/text:
 //   fits        the title takes at most CONFIG.titleCard.maxLines lines
 //   size        the output is 716 x 396

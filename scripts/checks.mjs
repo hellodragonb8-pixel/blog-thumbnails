@@ -358,7 +358,7 @@ export function lostText(prepared, out) {
 }
 
 // ---------------------------------------------------------------------------
-// Title cards (PROTOCOL.md, "Title cards"): a post without an image gets its
+// Title cards (PROTOCOL.md, "Text-only thumbnails"): a post without an image gets its
 // title set in type. These checks replace the colour checks above, since no
 // image was recoloured.
 // ---------------------------------------------------------------------------

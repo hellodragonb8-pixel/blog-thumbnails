@@ -2,7 +2,7 @@
 
 Turns an image (a diagram, a graph or a code screenshot) into two grayscale thumbnails: one for the light theme and one for the dark theme.
 
-A post without an image gets a title card instead: its short title (`TOCTitle`).  Its rules are in [PROTOCOL.md](PROTOCOL.md#title-cards).
+A post without an image gets a title card instead: its short title (`TOCTitle`).  Its rules are in [PROTOCOL.md](PROTOCOL.md#text-only-thumbnails).
 
 ## Quick start
 
