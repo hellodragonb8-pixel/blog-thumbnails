@@ -38,7 +38,6 @@ npm run thumbs -- --type graph path/to/post-image.png
 | `--source light` / `--source dark` | Overrides the light/dark detection of the original. |
 | `--frames keep` | Keeps a frame drawn around the content. |
 | `--accent on` | Keeps blue as the accent colour. |
-| `--format png` | Writes PNG instead of WebP. |
 
 ## How it works
 

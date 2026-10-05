@@ -49,7 +49,8 @@
 //                              cover   = fill the frame, cropping the edges
 //   --frames remove|keep       remove frames around the content (default: remove)
 //   --accent on|off            keep blue as the accent colour (default: off)
-//   --format webp|png          (default: webp)
+//
+// Thumbnails are always saved as lossless WebP, for the web.
 
 import sharp from "sharp";
 import { access, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -592,14 +593,15 @@ export async function makeThumbnails(input, opts) {
   const checks = checkThumbnails({ config: CONFIG, type: opts.type, prepared, pixels: images });
   const log = opts.quiet ? () => {} : console.log;
 
-  // Saved lossless, so the file has exactly the colours that were checked: the
-  // theme background stays locked and compression adds no off-palette colours.
+  // Saved as lossless WebP, so the file has exactly the colours that were
+  // checked: the theme background stays locked and compression adds no
+  // off-palette colours.
   const files = {};
   for (const [themeName, pixels] of Object.entries(images)) {
-    const fileName = `${base}-${themeName}.${opts.format}`;
+    const fileName = `${base}-${themeName}.webp`;
     const file = path.join(opts.out, fileName);
     await sharp(pixels, { raw: { width: canvasWidth, height: canvasHeight, channels: 3 } })
-      .toFormat(opts.format, opts.format === "webp" ? { lossless: true } : {})
+      .webp({ lossless: true })
       .toFile(file);
     files[themeName] = fileName;
     checks.push(await checkSavedFile(file, pixels, themeName));
@@ -801,7 +803,7 @@ async function updateManifest(outDir, made) {
 // the automatic crop, are off unless asked for.
 export const DEFAULT_OPTIONS = {
   type: null, crop: "off", out: "assets/thumbs", source: "auto", fit: "contain", frames: "remove",
-  accent: "off", format: "webp",
+  accent: "off",
 };
 
 function parseArgs(argv) {
@@ -881,8 +883,8 @@ async function main() {
   const types = Object.keys(CONFIG.presets);
   if (opts.inputs.length === 0 || !types.includes(opts.type)) {
     console.error(
-      `Usage: npm run thumbs -- --type ${types.join("|")} <image> [more images...] [--crop off|auto|"l,t,w,h"] [--out dir]` +
-      "[--source auto|light|dark] [--fit contain|cover] [--frames remove|keep] [--accent on|off] [--format webp|png]",
+      `Usage: npm run thumbs -- --type ${types.join("|")} <image> [more images...] [--crop off|auto|"l,t,w,h"] [--out dir] ` +
+      "[--source auto|light|dark] [--fit contain|cover] [--frames remove|keep] [--accent on|off]",
     );
     if (opts.inputs.length > 0) console.error(opts.type ? `Unknown type "${opts.type}".` : "--type is required.");
     process.exit(1);
