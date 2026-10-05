@@ -47,7 +47,7 @@ These options go beyond the protocol and are off unless you ask for them:
 
 | Option | What it does |
 |---|---|
-| `--crop auto` | Crops an image so tall that it would fill less than 60% of the width, keeping the top. If Microsoft Foundry is set up, Claude then checks the crop (see README). |
+| `--crop auto` | Crops an image so tall that it would fill less than 60% of the width, keeping the top, and cuts in a gap between rows. The inbox always uses it. |
 | `--crop "left,top,width,height"` | Uses only that part of the image. |
 | `--accent on` | Keeps blue in the original as the accent colour. |
 | `--frames keep` | Skips step 3. |

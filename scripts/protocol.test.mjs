@@ -82,7 +82,7 @@ test("presets: each ramp colour has more contrast than the one before", async (t
 
 for (const { file, type } of cases) {
   test(`${file} [${type}]`, async (t) => {
-    const opts = { ...DEFAULT_OPTIONS, type, out, review: "off", quiet: true, crop: "auto" };
+    const opts = { ...DEFAULT_OPTIONS, type, out, quiet: true, crop: "auto" };
     const { checks } = await makeThumbnails(file, opts);
 
     for (const c of checks.filter((c) => !LOST_MEANING.includes(c.name))) {
@@ -110,7 +110,7 @@ for (const file of ["assets/diagrams/Fig4_Custom_Graph.png", "assets/diagrams/be
       const cap = CONFIG.tintCap;
       CONFIG.tintCap = Infinity;
       try {
-        const { checks } = await makeThumbnails(file, { ...DEFAULT_OPTIONS, type: "diagram", out, review: "off", quiet: true, crop: "auto" });
+        const { checks } = await makeThumbnails(file, { ...DEFAULT_OPTIONS, type: "diagram", out, quiet: true, crop: "auto" });
         assert.ok(checks.some((c) => c.name === "text on a box" && !c.ok), "expected the faded labels to be flagged");
       } finally {
         CONFIG.tintCap = cap;

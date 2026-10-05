@@ -42,11 +42,6 @@
 //                              in pixels or % of the original. Height can be
 //                              "auto": fill the thumbnail at that width, cut at
 //                              a gap between rows. Example: "0,0,100%,auto"
-//   --review on|off            after an automatic crop, ask Claude (vision) whether
-//                              it keeps the part that matters; on fail, use
-//                              Claude's crop instead (default: on; uses
-//                              Microsoft Foundry, skipped when it isn't set
-//                              up). See review-crop.mjs.
 //   --out <dir>                output folder (default: assets/thumbs)
 //   --source auto|light|dark   is the image's background light or dark?
 //                              (default: auto, from the image's most common colour)
@@ -62,9 +57,7 @@ import path from "node:path";
 import { boxFill, buildLut, greyLevel, hexToRgb, legibility, strongestLevel, textLevel, toneCurve } from "./tone.mjs";
 import { loadInput } from "./svg.mjs";
 import { pathToFileURL } from "node:url";
-import { reviewCrop, SetupError } from "./review-crop.mjs";
 import { checkSavedFile, checkThumbnails, lostText } from "./checks.mjs";
-import Anthropic from "@anthropic-ai/sdk";
 
 // ---------------------------------------------------------------------------
 // Settings
@@ -475,11 +468,6 @@ export async function prepare(input, opts) {
     framesRemoved,
     crop,
     autoCrop,
-    // For the AI review: the part kept, in pixels of the image as loaded.
-    region: box,
-    size: { width: info.width, height: info.height },
-    source,
-    density,
   };
 }
 
@@ -630,37 +618,6 @@ export async function makeThumbnails(input, opts) {
     Object.values(files).map((f) => `  -> ${path.join(opts.out, f)}`).join("\n") + "\n" +
     describeChecks(checks).map((line) => `  ${line}`).join("\n"),
   );
-
-  // AI review of automatic crops: on fail, redo this image with Claude's crop.
-  if (autoCrop && opts.review !== "off") {
-    try {
-      const review = await reviewCrop({
-        input: prepared.source,
-        density: prepared.density,
-        region: prepared.region,
-        size: prepared.size,
-        thumbnailFile: path.join(opts.out, files.light),
-        direction: autoCrop.direction,
-        shape: innerShape(),
-      });
-      log(`  AI review: ${review.verdict.toUpperCase()} - ${review.reason}`);
-      if (review.verdict === "fail" && review.crop) {
-        const c = review.crop;
-        const spec = `${c.left}%,${c.top}%,${c.width}%,${c.height}%`;
-        log(`  redoing with Claude's crop: --crop "${spec}"`);
-        return makeThumbnails(input, { ...opts, crop: spec, review: "off" });
-      }
-    } catch (error) {
-      const why =
-        error instanceof SetupError ? `Foundry not set up: ${error.message}`
-        : error instanceof Anthropic.AuthenticationError ? "Foundry rejected the API key"
-        : error instanceof Anthropic.NotFoundError ? "Foundry deployment not found - check MODEL in review-crop.mjs"
-        : error instanceof Anthropic.APIConnectionError
-          ? `couldn't reach Foundry resource "${process.env.ANTHROPIC_FOUNDRY_RESOURCE}" - check the name`
-        : error.message.split(/\.\s/)[0];
-      log(`  AI review skipped (${why}); keeping the automatic crop`);
-    }
-  }
 
   const entry = { name: base, type: opts.type, source: path.relative(opts.out, input).replaceAll("\\", "/"), files, margins, textScale };
   return { entry, checks };
@@ -841,7 +798,7 @@ async function updateManifest(outDir, made) {
 // The protocol's defaults (PROTOCOL.md). Options that go beyond it, such as
 // the automatic crop, are off unless asked for.
 export const DEFAULT_OPTIONS = {
-  type: null, crop: "off", review: "on", out: "assets/thumbs", source: "auto", fit: "contain", frames: "remove",
+  type: null, crop: "off", out: "assets/thumbs", source: "auto", fit: "contain", frames: "remove",
   accent: "off", format: "webp",
 };
 
@@ -922,7 +879,7 @@ async function main() {
   const types = Object.keys(CONFIG.presets);
   if (opts.inputs.length === 0 || !types.includes(opts.type)) {
     console.error(
-      `Usage: npm run thumbs -- --type ${types.join("|")} <image> [more images...] [--crop off|auto|"l,t,w,h"] [--review on|off] [--out dir] ` +
+      `Usage: npm run thumbs -- --type ${types.join("|")} <image> [more images...] [--crop off|auto|"l,t,w,h"] [--out dir]` +
       "[--source auto|light|dark] [--fit contain|cover] [--frames remove|keep] [--accent on|off] [--format webp|png]",
     );
     if (opts.inputs.length > 0) console.error(opts.type ? `Unknown type "${opts.type}".` : "--type is required.");
