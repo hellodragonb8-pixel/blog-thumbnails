@@ -24,6 +24,16 @@
 // EXPECTED_FLAGS lists the samples each one should flag; every other sample
 // must pass them. So the test fails if they miss a known case or start
 // flagging good images.
+//
+// Title cards (posts without an image) have their own rules and checks
+// (PROTOCOL.md, "Title cards"): reading the TOCTitle, splitting it into
+// lines, and, when the title font is installed, every post in assets/text:
+//   fits        the title takes at most CONFIG.titleCard.maxLines lines
+//   size        the output is 716 x 396
+//   margins     the text is inside the 32px margins and centred; everything
+//               else is exactly the theme background
+//   on palette  only the text colour, the background and blends of the two
+//   saved file  as above
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -32,6 +42,7 @@ import os from "node:os";
 import path from "node:path";
 import { CONFIG, DEFAULT_OPTIONS, makeThumbnails } from "./make-thumbnails.mjs";
 import { rampProblems } from "./tone.mjs";
+import { readTitle, titleFontInstalled, wrapTitle } from "./title-card.mjs";
 
 // The sample set: every image in these folders, run the way the inbox runs
 // them (automatic crop on). To add a sample, drop it in the right folder.
@@ -114,6 +125,58 @@ for (const file of ["assets/diagrams/Fig4_Custom_Graph.png", "assets/diagrams/be
         assert.ok(checks.some((c) => c.name === "text on a box" && !c.ok), "expected the faded labels to be flagged");
       } finally {
         CONFIG.tintCap = cap;
+      }
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Title cards
+// ---------------------------------------------------------------------------
+
+test("title cards: the title is the post's TOCTitle", () => {
+  const post = (front) => `---\nOrder: 1\n${front}\nDate: 2026-08-26\n---\n\n# The long page title\n`;
+  assert.equal(readTitle(post('TOCTitle: The Agent Host\nPageTitle: "Introducing the Agent Host"')), "The Agent Host");
+  assert.equal(readTitle(post('TOCTitle: "New Inline Suggestions Model (part 2)"')), "New Inline Suggestions Model (part 2)");
+  assert.equal(readTitle(post(`TOCTitle: 'It''s here'`)), "It's here");
+  assert.equal(readTitle(post('TOCTitle: "Say \\"hi\\""')), 'Say "hi"');
+  assert.equal(readTitle("﻿---\r\nTOCTitle: Windows line ends\r\n---\r\n"), "Windows line ends");
+  assert.equal(readTitle(post('PageTitle: "No short title"')), null);
+  assert.equal(readTitle("# No front matter\n\nTOCTitle: in the text"), null);
+});
+
+test("title cards: the fewest lines, split as evenly as possible", async () => {
+  const measure = async (text) => text.length * 10; // 10px per character
+  // Two lines either way, but not "aaaa bbbb cccc" / "d".
+  assert.deepEqual(await wrapTitle("aaaa bbbb cccc d", measure, 140), ["aaaa bbbb", "cccc d"]);
+  assert.deepEqual(await wrapTitle("The Agent Host", measure, 140), ["The Agent Host"]);
+  assert.deepEqual(await wrapTitle("aa bb cc dd ee ff", measure, 50), ["aa bb", "cc dd", "ee ff"]);
+  assert.equal(await wrapTitle("Supercalifragilistic", measure, 140), null);
+});
+
+test("title cards: same backgrounds as the image presets", () => {
+  for (const [type, preset] of Object.entries(CONFIG.presets)) {
+    for (const [themeName, theme] of Object.entries(preset)) {
+      assert.equal(CONFIG.titleCard.colors[themeName].background, theme.background, `${type} ${themeName}`);
+    }
+  }
+});
+
+// Every post in assets/text, made the way the inbox makes them. They need the
+// title font, which isn't in the repository.
+let posts = [];
+try { posts = (await readdir("assets/text")).filter((n) => /\.md$/i.test(n)).sort(); } catch {}
+if (!posts.length) {
+  test("title card samples (add posts' .md files to assets/text)", (t) => t.skip("no sample folder: assets/text"));
+} else if (!(await titleFontInstalled(CONFIG.titleCard))) {
+  test("title card samples", (t) => t.skip(`the title font (${CONFIG.titleCard.font[0]}) isn't installed`));
+} else {
+  for (const name of posts) {
+    const file = path.posix.join("assets/text", name);
+    test(`${file} [text]`, async (t) => {
+      const { checks } = await makeThumbnails(file, { ...DEFAULT_OPTIONS, type: "text", out, quiet: true });
+      for (const c of checks) {
+        await t.test(`${c.theme ? `${c.theme}: ` : ""}${c.name}`, () => assert.ok(c.ok, c.message));
       }
     });
   }

@@ -1,6 +1,6 @@
 # Thumbnail protocol
 
-The fixed rules `scripts/make-thumbnails.mjs` follows to turn a blog image into two homepage thumbnails, one for the light theme and one for the dark theme. `npm test` checks every sample image against them.
+The fixed rules `scripts/make-thumbnails.mjs` follows to turn a blog image into two homepage thumbnails, one for the light theme and one for the dark theme. `npm test` checks every sample image against them. Posts without an image get a title card instead, with its own rules: see [Title cards](#title-cards).
 
 ## What the script does
 
@@ -61,6 +61,28 @@ These options go beyond the protocol and are off unless you ask for them:
 | `--frames keep` | Skips step 3. |
 | `--source light` / `--source dark` | Overrides step 2's dark-image detection. |
 
+## Title cards
+
+A post without an image gets a title card: its short title set in type on the theme background. The script makes it from the post's markdown file (`scripts/title-card.mjs`, settings in `CONFIG.titleCard`). No image is recoloured, so steps 1 to 6 don't apply; these rules do.
+
+1. **The title is the post's `TOCTitle`,** from the front matter at the top of its `.md` file: the short title the blog archive lists ("The Agent Host"), not the `PageTitle` at the top of the post ("Introducing the Agent Host for persistent, portable agent sessions"). The text is used as it is: the script never shortens or rewords it. A post without a `TOCTitle` fails.
+2. **The font is SF Pro Semibold,** 30px, 34px line height, −1% letter spacing (−0.3px). It has to be installed on the computer that runs the script; the script checks that it really is, because a missing font is quietly replaced by another, and fails if not. SF Pro isn't in the repository.
+3. **The colours are fixed.** Light: text `#1b2022` on `#f4f5f6`. Dark: text `#989fa4` on `#0b0c0d`. The backgrounds are the same as the image thumbnails', and locked the same way.
+4. **The text sits inside the 32px margins,** so each line is at most 294px wide. The title is split between words into as few lines as fit, and of those, the most even split, so the last line isn't a single word left on its own ("Announcing / Private Marketplace / for VS Code").
+5. **At most 3 lines.** Three 34px lines are all that fit in the 134px between the top and bottom margins. A longer title is still made, but marked NEEDS A LOOK: ask the author for a shorter `TOCTitle`.
+6. **The text is centred** across the frame, and the lines are centred as a block from top to bottom, with each line's baseline 28px below the top of its 34px line, as in the Figma frames.
+7. **Save** both as lossless WebP, like the image thumbnails.
+
+Every title card is checked:
+
+| Check | Passes when |
+|---|---|
+| Fits | The title takes at most 3 lines. If not, the card is marked NEEDS A LOOK. |
+| Size | The output is 716 × 396. |
+| Margins | The text is at least 32px from every edge and centred across the frame (to within 2px). Everything else is exactly the theme background. |
+| On palette | Every pixel is the text colour, the background, or a blend of the two (the letters' soft edges). |
+| Saved file | The saved file, read back, is pixel for pixel what passed the checks above. |
+
 ## The test
 
 `npm test` runs every sample image in `assets/diagrams`, `assets/graphs` and `assets/code` the way the inbox does (automatic crop on). The same checks run on every image the inbox makes (`scripts/checks.mjs`), so READY means it passed all of them. For both themes of each image:
@@ -85,6 +107,8 @@ It also checks every preset: after the first colour that differs from the backgr
 The first nine checks are the protocol: a failure means the script broke a rule. The last two look for meaning the original carried and the greys lost; the script can't fix that without redrawing, so it flags the image NEEDS A LOOK. The test lists which samples each of them is expected to flag (`EXPECTED_FLAGS` in `protocol.test.mjs`), so a change that makes them miss a known case, or flag a good image, fails the test.
 
 To add a sample, drop the image in the matching folder. If it's one the last two checks should flag, add it to `EXPECTED_FLAGS`.
+
+For title cards, `npm test` checks the rules above: reading the `TOCTitle`, splitting titles into lines, and that the backgrounds match the image presets. When SF Pro is installed, it also makes a title card for every post in `assets/text` and runs the checks on it. To add a sample, drop a post's `.md` file there; the posts are in the vscode-docs repository, under `blogs/`.
 
 ## Known limits
 

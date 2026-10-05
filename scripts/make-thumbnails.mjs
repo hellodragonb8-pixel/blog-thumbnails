@@ -21,6 +21,10 @@
 // Nothing else changes the image. Options that go beyond the protocol
 // (automatic crop, accent colour) are off unless asked for.
 //
+// Posts without an image get a title card instead (--type text): their short
+// title, read from the post's markdown file, set in type (title-card.mjs,
+// PROTOCOL.md "Title cards").
+//
 // Every run also updates, in the output folder:
 //   preview.html  all thumbnails in the folder, in both themes
 //   tuner.html    the preset settings as live controls, per category
@@ -28,12 +32,14 @@
 // Usage:
 //   npm run thumbs
 //     makes thumbnails for every image in inbox/diagram, inbox/graph and
-//     inbox/code, into out/ (see HOW-TO-THUMBNAILS.md)
+//     inbox/code, and a title card for every post (.md) in inbox/text, into
+//     out/ (see HOW-TO-THUMBNAILS.md)
 //   npm run thumbs -- --type graph assets/chart.png [more images...] [options]
 //     one or more images, with options
 //
 // Options:
-//   --type diagram|code|graph  which preset to use (required)
+//   --type diagram|code|graph|text  which preset to use (required); text
+//                              makes a title card from a post's .md file
 //   --crop off|auto|"l,t,w,h"  off (default): never crop.
 //                              auto: crop content that would end up small (see
 //                              autoCropBelow), keeping the top of a tall image.
@@ -58,7 +64,8 @@ import path from "node:path";
 import { boxFill, buildLut, greyLevel, hexToRgb, legibility, strongestLevel, textLevel, toneCurve } from "./tone.mjs";
 import { loadInput } from "./svg.mjs";
 import { pathToFileURL } from "node:url";
-import { checkSavedFile, checkThumbnails, lostText } from "./checks.mjs";
+import { checkSavedFile, checkThumbnails, checkTitleCard, inkMargins, lostText } from "./checks.mjs";
+import { readTitle, renderTitleCard } from "./title-card.mjs";
 
 // ---------------------------------------------------------------------------
 // Settings
@@ -132,6 +139,22 @@ export const CONFIG = {
   // brighter than code from a light screenshot. Contrast amount (0-1): 0.48 is
   // Screenshot 2026-10-02 095526's text.
   textLevel: { types: ["code"], target: 0.48 },
+
+  // Title cards (PROTOCOL.md, "Title cards"): for a post without an image, its
+  // short title (TOCTitle) on the theme background. Sizes in Figma px.
+  titleCard: {
+    font: ["SF Pro Display", "SF Pro"], // installed system font: the first one found
+    weight: 600,          // Semibold
+    size: 30,
+    lineHeight: 34,
+    letterSpacing: -0.01, // share of the size: -1%
+    baseline: 28,         // from the top of each line to its baseline, as in the Figma frames
+    maxLines: 3,          // all that fit inside the margins: 3 x 34 <= 198 - 2 x 32
+    colors: {             // same backgrounds as the presets
+      light: { background: "#f4f5f6", text: "#1b2022" },
+      dark:  { background: "#0b0c0d", text: "#989fa4" },
+    },
+  },
 
   // How different from the background a pixel must be (grey levels, 0-255) to
   // count as content when trimming the image's own margins. Raise it for noisy JPEGs.
@@ -572,6 +595,7 @@ async function colorize(prepared, preset, layout, base, opts) {
 }
 
 export async function makeThumbnails(input, opts) {
+  if (opts.type === "text") return makeTitleCard(input, opts);
   const preset = CONFIG.presets[opts.type];
   const prepared = await prepare(input, opts);
   const { width, height, framesRemoved, crop, autoCrop } = prepared;
@@ -593,19 +617,8 @@ export async function makeThumbnails(input, opts) {
   const checks = checkThumbnails({ config: CONFIG, type: opts.type, prepared, pixels: images });
   const log = opts.quiet ? () => {} : console.log;
 
-  // Saved as lossless WebP, so the file has exactly the colours that were
-  // checked: the theme background stays locked and compression adds no
-  // off-palette colours.
-  const files = {};
-  for (const [themeName, pixels] of Object.entries(images)) {
-    const fileName = `${base}-${themeName}.webp`;
-    const file = path.join(opts.out, fileName);
-    await sharp(pixels, { raw: { width: canvasWidth, height: canvasHeight, channels: 3 } })
-      .webp({ lossless: true })
-      .toFile(file);
-    files[themeName] = fileName;
-    checks.push(await checkSavedFile(file, pixels, themeName));
-  }
+  const { files, saved } = await saveThemes(images, base, opts);
+  checks.push(...saved);
 
   // Margins in Figma px: top, right, bottom, left.
   const margins = [top, canvasWidth - width - left, canvasHeight - height - top, left].map((m) => m / scale);
@@ -627,12 +640,64 @@ export async function makeThumbnails(input, opts) {
   return { entry, checks };
 }
 
+// Saves both themes as lossless WebP, so each file has exactly the colours
+// that were checked: the theme background stays locked and compression adds
+// no off-palette colours.
+async function saveThemes(images, base, opts) {
+  const { frame, scale } = CONFIG;
+  const files = {};
+  const saved = [];
+  for (const [themeName, pixels] of Object.entries(images)) {
+    const fileName = `${base}-${themeName}.webp`;
+    const file = path.join(opts.out, fileName);
+    await sharp(pixels, { raw: { width: frame.width * scale, height: frame.height * scale, channels: 3 } })
+      .webp({ lossless: true })
+      .toFile(file);
+    files[themeName] = fileName;
+    saved.push(await checkSavedFile(file, pixels, themeName));
+  }
+  return { files, saved };
+}
+
+// A title card (PROTOCOL.md, "Title cards"): the post's short title, read
+// from its markdown file, set in the title font on each theme's background.
+async function makeTitleCard(input, opts) {
+  const title = readTitle(await readFile(input, "utf8"));
+  if (!title) {
+    throw Object.assign(new Error("There's no TOCTitle in the post's front matter"),
+      { advice: "Check that it's the post's .md file and that it has a TOCTitle line." });
+  }
+  const { pixels, lines } = await renderTitleCard(title, CONFIG);
+  const checks = checkTitleCard({ config: CONFIG, pixels, lines });
+  const base = path.basename(input, path.extname(input));
+  await mkdir(opts.out, { recursive: true });
+  const { files, saved } = await saveThemes(pixels, base, opts);
+  checks.push(...saved);
+
+  // Margins in Figma px: top, right, bottom, left.
+  const { frame, scale } = CONFIG;
+  const m = inkMargins(pixels.light, frame.width * scale, frame.height * scale, hexToRgb(CONFIG.titleCard.colors.light.background));
+  const margins = m ? [m.top, m.right, m.bottom, m.left].map((px) => px / scale) : [];
+  const log = opts.quiet ? () => {} : console.log;
+  log(
+    `${input}  [text]\n` +
+    `  title: ${lines.join(" / ")}\n` +
+    `  margins (top right bottom left): ${margins.join(" ")}\n` +
+    Object.values(files).map((f) => `  -> ${path.join(opts.out, f)}`).join("\n") + "\n" +
+    describeChecks(checks).map((line) => `  ${line}`).join("\n"),
+  );
+
+  const entry = { name: base, type: "text", title, lines, source: path.relative(opts.out, input).replaceAll("\\", "/"), files, margins };
+  return { entry, checks };
+}
+
 // What to tell the person running the script when a check fails.
 const ADVICE = {
   readable: "Look at it in preview.html. If text is hard to read, ask the design team.",
   visible: "Look at it in preview.html. If lines are missing, ask the design team.",
   "not tiny": "It's very tall, so it ends up small. Run it with --crop auto, or ask the design team.",
   "colours merge": "Look at it in preview.html. If every line or bar is labelled directly, it's fine. If the chart needs a legend or colour to tell them apart, ask the author for a version where they differ in lightness, or ask the design team.",
+  fits: "Ask the author for a shorter TOCTitle, or ask the design team.",
   "text on a box": "Look at that area in preview.html. If the text is hard to read, ask the author for dark text on light boxes (or the other way round), or ask the design team.",
 };
 
@@ -661,8 +726,10 @@ async function writePreview(outDir, entries) {
       <p class="meta">${escapeHtml(e.type ?? "")} · margins (top, right, bottom, left): ${e.margins.join(", ")} px</p>
       <div class="cols">
         <figure class="col col--source">
-          <div class="source"><img src="${escapeHtml(e.source)}" alt=""></div>
-          <figcaption>Original</figcaption>
+          ${e.title
+            ? `<div class="source source--title">${escapeHtml(e.title)}</div>`
+            : `<div class="source"><img src="${escapeHtml(e.source)}" alt=""></div>`}
+          <figcaption>${e.title ? "TOCTitle" : "Original"}</figcaption>
         </figure>
         <figure class="col col--light">
           <div class="thumb"><img src="${escapeHtml(e.files.light)}" alt=""><span class="guide"></span></div>
@@ -717,6 +784,7 @@ async function writePreview(outDir, entries) {
   .col--dark figcaption { color: #9a9ea2; }
   .source { aspect-ratio: ${frame.width} / ${frame.height}; display: grid; place-items: center; }
   .source img { max-width: 100%; max-height: 100%; }
+  .source--title { padding: 16px; text-align: center; font-size: 1.125rem; font-weight: 600; }
   .thumb { position: relative; aspect-ratio: ${frame.width} / ${frame.height}; border-radius: 4px; overflow: hidden; }
   .thumb img { display: block; width: 100%; height: 100%; }
   .guide {
@@ -823,19 +891,21 @@ function parseArgs(argv) {
 const INBOX = "inbox";
 const OUT = "out";
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif", ".tif", ".tiff", ".svg"]);
+// Image categories, plus text: title cards, made from a post's .md file.
+const TYPES = [...Object.keys(CONFIG.presets), "text"];
+const accepts = (type, name) => (type === "text" ? /\.md$/i.test(name) : IMAGE_EXTENSIONS.has(path.extname(name).toLowerCase()));
 
 async function runInbox() {
-  const types = Object.keys(CONFIG.presets);
-  for (const type of types) await mkdir(path.join(INBOX, type), { recursive: true });
+  for (const type of TYPES) await mkdir(path.join(INBOX, type), { recursive: true });
 
   const jobs = [];
-  for (const type of types) {
+  for (const type of TYPES) {
     for (const name of (await readdir(path.join(INBOX, type))).sort()) {
-      if (IMAGE_EXTENSIONS.has(path.extname(name).toLowerCase())) jobs.push({ type, file: path.join(INBOX, type, name) });
+      if (accepts(type, name)) jobs.push({ type, file: path.join(INBOX, type, name) });
     }
   }
   if (jobs.length === 0) {
-    console.log(`The inbox is empty. Put images in ${types.map((t) => `${INBOX}/${t}`).join(", ")}, then run npm run thumbs again.`);
+    console.log(`The inbox is empty. Put images in ${Object.keys(CONFIG.presets).map((t) => `${INBOX}/${t}`).join(", ")}, or a post's .md file in ${INBOX}/text, then run npm run thumbs again.`);
     return;
   }
 
@@ -866,7 +936,10 @@ async function runInbox() {
         for (const line of problems) console.log(`             ${line}`);
       }
     } catch (error) {
-      console.log(`FAILED       ${file}\n             ${error.message}. Check that it's an image file; if it is, send it to the design team.`);
+      const advice = error.advice ?? (type === "text"
+        ? "Check that it's the post's .md file; if it is, send it to the design team."
+        : "Check that it's an image file; if it is, send it to the design team.");
+      console.log(`FAILED       ${file}\n             ${error.message}. ${advice}`);
     }
   }
 
@@ -880,10 +953,9 @@ async function main() {
   if (process.argv.length <= 2) return runInbox();
 
   const opts = parseArgs(process.argv.slice(2));
-  const types = Object.keys(CONFIG.presets);
-  if (opts.inputs.length === 0 || !types.includes(opts.type)) {
+  if (opts.inputs.length === 0 || !TYPES.includes(opts.type)) {
     console.error(
-      `Usage: npm run thumbs -- --type ${types.join("|")} <image> [more images...] [--crop off|auto|"l,t,w,h"] [--out dir] ` +
+      `Usage: npm run thumbs -- --type ${TYPES.join("|")} <image or post .md> [more...] [--crop off|auto|"l,t,w,h"] [--out dir] ` +
       "[--source auto|light|dark] [--fit contain|cover] [--frames remove|keep] [--accent on|off]",
     );
     if (opts.inputs.length > 0) console.error(opts.type ? `Unknown type "${opts.type}".` : "--type is required.");

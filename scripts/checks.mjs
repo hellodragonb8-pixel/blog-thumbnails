@@ -357,6 +357,80 @@ export function lostText(prepared, out) {
   return worst;
 }
 
+// ---------------------------------------------------------------------------
+// Title cards (PROTOCOL.md, "Title cards"): a post without an image gets its
+// title set in type. These checks replace the colour checks above, since no
+// image was recoloured.
+// ---------------------------------------------------------------------------
+
+// Space around the text, in px: everything that isn't exactly the background.
+// Null when there's no text.
+export function inkMargins(data, W, H, bg) {
+  let left = W, right = -1, top = H, bottom = -1;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const o = (y * W + x) * 3;
+      if (data[o] === bg[0] && data[o + 1] === bg[1] && data[o + 2] === bg[2]) continue;
+      left = Math.min(left, x); right = Math.max(right, x); top = Math.min(top, y); bottom = Math.max(bottom, y);
+    }
+  }
+  return right < 0 ? null : { left, right: W - 1 - right, top, bottom: H - 1 - bottom };
+}
+
+// config: CONFIG from make-thumbnails.mjs. pixels: { light, dark } as raw RGB.
+// lines: the title's lines, as set.
+export function checkTitleCard({ config, pixels, lines }) {
+  const { frame, inset, scale, titleCard } = config;
+  const W = frame.width * scale, H = frame.height * scale, M = inset * scale;
+  const results = [];
+  const check = (name, theme, fn) => {
+    try {
+      fn();
+      results.push({ name, theme, ok: true, skipped: false, message: "" });
+    } catch (error) {
+      results.push({ name, theme, ok: false, skipped: false, message: error.message });
+    }
+  };
+  const fail = (message) => { throw new Error(message); };
+
+  check("fits", null, () => {
+    if (lines.length > titleCard.maxLines) fail(`the title takes ${lines.length} lines, and only ${titleCard.maxLines} fit inside the margins`);
+  });
+
+  for (const [themeName, colors] of Object.entries(titleCard.colors)) {
+    const data = pixels[themeName];
+    const bg = hexToRgb(colors.background), ink = hexToRgb(colors.text);
+
+    check("size", themeName, () => {
+      if (data.length !== W * H * 3) fail(`the image isn't ${W} x ${H}`);
+    });
+
+    // Everything outside the text is exactly the background, so this is also
+    // the background check.
+    check("margins", themeName, () => {
+      const m = inkMargins(data, W, H, bg);
+      if (!m) fail("the title is missing");
+      for (const [side, px] of Object.entries(m)) {
+        if (px < M) fail(`the text is ${px / scale}px from the ${side} edge, under ${inset}px`);
+      }
+      if (Math.abs(m.left - m.right) > 2 * scale) fail(`the text isn't centred: ${m.left / scale}px on the left, ${m.right / scale}px on the right`);
+    });
+
+    // Only the text colour, the background, and blends of the two at the
+    // letters' soft edges.
+    check("on palette", themeName, () => {
+      const d = ink.map((v, i) => v - bg[i]);
+      const dd = d.reduce((t, v) => t + v * v, 0);
+      for (let o = 0; o < data.length; o += 3) {
+        const c = [data[o], data[o + 1], data[o + 2]];
+        const t = Math.min(1, Math.max(0, c.reduce((s, v, i) => s + (v - bg[i]) * d[i], 0) / dd));
+        if (c.some((v, i) => Math.abs(v - (bg[i] + t * d[i])) > 2)) fail(`colour rgb(${c.join(",")}) isn't the text colour, the background or a blend of the two`);
+      }
+    });
+  }
+  return results;
+}
+
 // The saved file, read back, is pixel for pixel what passed the checks above:
 // saving changed no colour, so the background is still exactly the theme's.
 export async function checkSavedFile(file, pixels, theme) {

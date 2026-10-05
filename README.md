@@ -2,18 +2,20 @@
 
 Turns a blog post's image (a diagram, a graph or a code screenshot) into the two grayscale homepage thumbnails: one for the light theme and one for the dark theme, 716 × 396 (358 × 198 at 2x). It only changes colours: shapes, text and icons are never redrawn.
 
+A post without an image gets a title card instead: its short title (`TOCTitle`) in SF Pro Semibold on the same backgrounds, made from the post's `.md` file. Its rules are in [PROTOCOL.md](PROTOCOL.md#title-cards).
+
 - **Making thumbnails for a post:** [HOW-TO-THUMBNAILS.md](HOW-TO-THUMBNAILS.md), step by step, for whoever uploads the posts.
 - **The rules the script follows and the checks that prove it:** [PROTOCOL.md](PROTOCOL.md).
 
 ## Quick start
 
-Needs [Node.js](https://nodejs.org) 20.9 or later.
+Needs [Node.js](https://nodejs.org) 20.9 or later. Title cards also need the SF Pro font installed (on Windows, for all users).
 
 ```sh
 npm install
 ```
 
-Put each image in `inbox/diagram`, `inbox/graph` or `inbox/code`, then run:
+Put each image in `inbox/diagram`, `inbox/graph` or `inbox/code`, and the `.md` file of each post without an image in `inbox/text`, then run:
 
 ```sh
 npm run thumbs
@@ -29,7 +31,7 @@ For the design team:
 npm run thumbs -- --type graph path/to/post-image.png
 ```
 
-`--type` picks the category: `diagram`, `graph` or `code`. Output goes to `assets/thumbs/` unless you pass `--out <folder>`.
+`--type` picks the category: `diagram`, `graph` or `code`, or `text` for a title card from a post's `.md` file. Output goes to `assets/thumbs/` unless you pass `--out <folder>`.
 
 | Option | What it does |
 |---|---|
@@ -65,9 +67,9 @@ It follows the OS setting; `data-theme="light"` or `data-theme="dark"` on `<html
 
 ## Tuning and testing
 
-The settings are in `CONFIG` at the top of `scripts/make-thumbnails.mjs`: the colour ramp for each category and theme (`presets`), the margin, and the standards for box fills and code text. To try ramp colours, open `out/_work/tuner.html` after an inbox run, or `assets/thumbs/tuner.html` after a single-image run. It recolours every image live and its **Copy** button gives the preset to paste back into `CONFIG.presets`.
+The settings are in `CONFIG` at the top of `scripts/make-thumbnails.mjs`: the colour ramp for each category and theme (`presets`), the margin, the standards for box fills and code text, and the title card's font, sizes and colours (`titleCard`). To try ramp colours, open `out/_work/tuner.html` after an inbox run, or `assets/thumbs/tuner.html` after a single-image run. It recolours every image live and its **Copy** button gives the preset to paste back into `CONFIG.presets`.
 
-`npm test` runs every sample image through the script and all the checks. Run it after any change. The samples live in `assets/diagrams`, `assets/graphs` and `assets/code`, which aren't in the repository; without them only the preset checks run. To add a sample, drop it in the matching folder.
+`npm test` runs every sample image through the script and all the checks. Run it after any change. The samples live in `assets/diagrams`, `assets/graphs`, `assets/code` and `assets/text` (posts' `.md` files), which aren't in the repository; without them only the preset and title checks run. To add a sample, drop it in the matching folder.
 
 ## Tips for post authors
 
@@ -86,7 +88,8 @@ The script works with any image, but these make the grayscale versions clearer:
 | `scripts/tone.mjs` | The colour mapping, shared with the tuner. |
 | `scripts/checks.mjs` | The checks run on every thumbnail. |
 | `scripts/protocol.test.mjs` | `npm test`. |
+| `scripts/title-card.mjs` | Title cards: reads the `TOCTitle`, splits it into lines, sets it in type. |
 | `scripts/svg.mjs` | Loads SVGs with their CSS variables resolved. |
 | `scripts/tuner-template.html` | The tuner page. |
 | `thumbnails.css` | Reference CSS for showing the thumbnails on a page. |
-| `inbox/`, `out/`, `assets/` | Images in, thumbnails out, sample and reference images. Not in the repository. |
+| `inbox/`, `out/`, `assets/` | Images and posts in, thumbnails out, sample and reference images. Not in the repository. |

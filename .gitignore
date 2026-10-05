@@ -4,9 +4,9 @@ node_modules/
 # Generated thumbnails, previews and working files
 out/
 
-# Images dropped in for processing
+# Images and posts dropped in for processing
 inbox/
 
-# Sample, reference and saved images: kept out of the repository.
-# npm test uses assets/diagrams, assets/graphs and assets/code when they exist.
+# Sample, reference and saved images, and sample posts: kept out of the repository.
+# npm test uses assets/diagrams, assets/graphs, assets/code and assets/text when they exist.
 assets/
