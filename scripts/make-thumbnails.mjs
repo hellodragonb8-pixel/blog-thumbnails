@@ -1,16 +1,23 @@
 // Turns a blog image into two homepage thumbnails, one per theme:
 //   <name>-light.webp and <name>-dark.webp
 //
+// Each image is code (a screenshot of code, a terminal or other plain text),
+// a graph (a chart: bars, lines, plotted points) or a diagram (everything
+// else), and each gets its own colours (CONFIG.presets). Which one, in order:
+//   1. opts.type, when given (for example from a line in the post's metadata)
+//   2. opts.alt, the image's alt text, when it says chart or diagram
+//   3. the image itself: looksLikeCode, then looksLikeGraph, else diagram
+//
 // It follows a fixed protocol, and checks every thumbnail against it:
 //   1. Load the image as it looks (first frame, transparency on white,
 //      SVG colours resolved).
 //   2. Background: the image's most common colour.
 //   3. Remove a frame drawn around the content.
-//   4. Layout: trim empty margins, fit the whole image inside the 32px
-//      margins, centre it on the 716 x 396 canvas.
+//   4. Layout: trim empty margins, crop a very tall image to its top, fit the
+//      whole image inside the 32px margins, centre it on the 716 x 396 canvas.
 //   5. Colour: desaturate, then map each grey (by its distance from the
-//      background grey) along the category preset's ramp of colours (seven,
-//      or three for code), the same way for every pixel.
+//      background grey) along the preset's ramp of colours (seven, or three
+//      for code), the same way for every pixel.
 //   6. Tone: each image gets its own smooth tone curve. Diagrams: a main box
 //      fill darker than the standard is brought to it. Code: text further
 //      from its background than the standard is scaled down to it, as far as
@@ -18,35 +25,36 @@
 //      below the preset's minimum contrast, stretch the greys until they do.
 // The colour curve is always smooth, like Levels: no steps, so icons, shading
 // and soft edges keep their shape.
-// Nothing else changes the image. Options that go beyond the protocol
-// (automatic crop, accent colour) are off unless asked for.
 //
-// Posts without an image get a title card instead (--type text): their short
-// title, read from the post's markdown file, set in type (title-card.mjs).
-//
-// Every run also updates preview.html in the output folder: all thumbnails in
-// the folder, in both themes.
+// A post without an image gets a text-only thumbnail instead: its short title
+// (TOCTitle), read from the post's .md file, set in the site's font
+// (title-card.mjs).
 //
 // Usage:
 //   npm run thumbs
-//     makes thumbnails for every image in inbox/diagram, inbox/graph and
-//     inbox/code, and a title card for every post (.md) in inbox/text, into
-//     out/ (see README.md)
-//   npm run thumbs -- --type graph assets/chart.png [more images...] [options]
-//     one or more images, with options
+//     makes thumbnails for every image and post (.md) in inbox/, into out/,
+//     with preview.html showing them all
+//   npm run thumbs -- <image or post .md> [more...] [options]
+//     the given files, into out/
+//   From a build script:
+//     import { makeThumbnails, DEFAULT_OPTIONS } from "./scripts/make-thumbnails.mjs";
+//     const { entry, checks } = await makeThumbnails(file, { ...DEFAULT_OPTIONS, out: "some/folder", alt });
+//     entry.files is { light, dark }: the two file names written to `out`.
+//     entry.type is what it was treated as, entry.decidedBy how that was chosen.
+//     checks lists every check; any with ok: false is worth a warning.
 //
 // Options:
-//   --type diagram|code|graph|text  which preset to use (required); text
-//                              makes a title card from a post's .md file
-//   --crop off|auto|"l,t,w,h"  off (default): never crop.
-//                              auto: crop content that would end up small (see
-//                              autoCropBelow), keeping the top of a tall image.
+//   --out <dir>                output folder (default: out)
+//   --type code|diagram|graph|text  skip the detection: code, diagram or graph
+//                              for an image, text for a post's .md file
+//   --alt "<alt text>"         the image's alt text: a hint (chart or diagram)
+//   --crop auto|off|"l,t,w,h"  auto (default): crop an image so tall it would
+//                              end up small, keeping its top. off: never crop.
 //                              "l,t,w,h": use only this part of the image: left,
 //                              top, width, height (like Photoshop's X, Y, W, H),
 //                              in pixels or % of the original. Height can be
 //                              "auto": fill the thumbnail at that width, cut at
 //                              a gap between rows. Example: "0,0,100%,auto"
-//   --out <dir>                output folder (default: assets/thumbs)
 //   --source auto|light|dark   is the image's background light or dark?
 //                              (default: auto, from the image's most common colour)
 //   --fit contain|cover        contain = whole image visible (default)
@@ -59,6 +67,7 @@
 import sharp from "sharp";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { boxFill, buildLut, greyLevel, hexToRgb, legibility, strongestLevel, textLevel, toneCurve } from "./tone.mjs";
 import { loadInput } from "./svg.mjs";
 import { checkSavedFile, checkThumbnails, checkTitleCard, inkMargins, lostText } from "./checks.mjs";
@@ -72,10 +81,10 @@ const CONFIG = {
   inset: 32,                          // minimum margin on every side, in Figma px
   scale: 2,                           // export at 2x for sharp screens -> 716 x 396
 
-  // One preset per image category, each with a light and a dark theme. Each
-  // theme is a ramp of seven colours (code has three, see below): each grey in
-  // the image, by how far it is from the image's background, gets a blend of
-  // the two nearest colours (positions in tone.mjs, PALETTE_STOPS):
+  // Three presets, diagram, graph and code, each with a light and a dark
+  // theme. Each theme is a ramp of seven colours (code has three, see below):
+  // each grey in the image, by how far it is from the image's background, gets
+  // a blend of the two nearest colours (positions in tone.mjs, PALETTE_STOPS):
   //   background  the image background becomes this (the thumbnail background)
   //   faint       outlines, the palest fills, soft edges
   //   subtle      the lightest marks drawn to be seen
@@ -88,14 +97,20 @@ const CONFIG = {
   //               Capped at the ink's own contrast.
   //   minVisible  optional, checked only (graphs): marks drawn to be seen
   //               should come out at least this contrast ratio, otherwise the
-  //               image is flagged NEEDS A LOOK. Set it by choosing a
-  //               "subtle" colour with that contrast.
+  //               image is flagged. Set it by choosing a "subtle" colour with
+  //               that contrast.
   // After the first colour that differs from the background, each colour must
   // have more contrast than the one before.
   presets: {
+    // Diagram: pale boxes, darker text and lines (everything that isn't code or a chart).
     diagram: {
       light: { background: "#f4f5f6", faint: "#eff1f3", subtle: "#e9edf0", medium: "#d8dee4", strong: "#b7c6d0", text: "#81898f", ink: "#737a7f", minContrast: 3 },
       dark:  { background: "#0b0c0d", faint: "#111314", subtle: "#17191b", medium: "#202326", strong: "#353b40", text: "#797f84", ink: "#8a9095", minContrast: 3 },
+    },
+    // Graph: charts, kept soft (low contrast) so bars and lines don't look heavy.
+    graph: {
+      light: { background: "#f4f5f6", faint: "#e5e7ea", subtle: "#d5d9dd", medium: "#d1d5da", strong: "#bfc5ca", text: "#abb3b9", ink: "#a4acb3", minContrast: 2.1, minVisible: 1.3 },
+      dark:  { background: "#0b0c0d", faint: "#25292b", subtle: "#3f4549", medium: "#454b4f", strong: "#5f676c", text: "#7c858a", ink: "#879096", minContrast: 2.9, minVisible: 2 },
     },
     // Code: three colours (tone.mjs, CODE_STOPS): background, dim for the
     // paler syntax colours (comments, numbers, strings), text for the rest.
@@ -103,32 +118,28 @@ const CONFIG = {
       light: { background: "#f4f5f6", dim: "#9ba9b4", text: "#8595a3", minContrast: 2 },
       dark:  { background: "#0b0c0d", dim: "#61696f", text: "#859098", minContrast: 3.1 },
     },
-    graph: {
-      light: { background: "#f4f5f6", faint: "#e5e7ea", subtle: "#d5d9dd", medium: "#d1d5da", strong: "#bfc5ca", text: "#abb3b9", ink: "#a4acb3", minContrast: 2.1, minVisible: 1.3 },
-      dark:  { background: "#0b0c0d", faint: "#25292b", subtle: "#3f4549", medium: "#454b4f", strong: "#5f676c", text: "#7c858a", ink: "#879096", minContrast: 2.9, minVisible: 2 },
-    },
   },
 
   // Tint weight per category, used when desaturating: how much a pixel's
   // colourfulness (0-255) counts as distance from the background, on top of
   // its brightness. 0 = plain desaturation. Keeps pale tinted boxes (a pale
   // blue card on a grey page) from turning into the page grey.
-  tint: { diagram: 1, code: 0, graph: 0 },
+  tint: { diagram: 1, graph: 0, code: 0 },
   // Most the tint can add (grey levels). Without a limit, a strongly coloured
   // pale box (a yellow #f5cc84 node) counts as nearly as dark as the black
   // text on it, and the text disappears.
   tintCap: 40,
 
-  // Box fill: in these categories, an image whose main
-  // fill (boxes, panels) is darker than `target` gets a tone curve that brings
-  // that fill to `target`, so boxes look the same from diagram to diagram.
+  // Box fill: in these presets, an image whose main fill (boxes, panels) is
+  // darker than `target` gets a tone curve that brings that fill to `target`,
+  // so boxes look the same from diagram to diagram.
   // Contrast amounts (0-1): 0.14 is evaluation_flow's box fill. A fill counts
   // when it is at least `minShare` of the content and no darker than `darkest`.
   // It moves at most to `minScale` of where it was, so lines lighter than the
   // boxes (connectors) keep at least that much of their strength.
   boxFill: { types: ["diagram"], target: 0.14, darkest: 0.35, minShare: 0.2, minScale: 0.6 },
 
-  // Text level: in these categories, an image whose
+  // Text level: in these presets, an image whose
   // typical text sits further from its background than `target` has all its
   // greys scaled down so the text lands on `target`. Light text on a dark
   // editor is far from its background, and without this it comes out much
@@ -136,10 +147,27 @@ const CONFIG = {
   // Screenshot 2026-10-02 095526's text.
   textLevel: { types: ["code"], target: 0.48 },
 
+  // Telling code from images (looksLikeCode): an image is code when, after
+  // borders, panels and bars are set aside, it's at least `minLines` lines of
+  // text, `minText` of its ink is text, and at least `minRegular` of that text
+  // is in lines of the usual height. Measured on the samples: code screenshots
+  // reach 0.99-1 text, diagrams and charts at most 0.89 (a table) or 0.97 text
+  // with 0.65 regular (a page with a table).
+  codeDetect: { minLines: 4, minText: 0.95, minRegular: 0.7 },
+
+  // Telling charts from diagrams (looksLikeGraph): a chart has axes or
+  // gridlines, at least `minLines` thin lines across at least `minLength` of
+  // the image in one direction, evenly spaced (at least `minEven` of the gaps
+  // within 15% of the usual gap). Measured on 33 reviewed samples: 8 of 15
+  // charts found, none of 18 diagrams and tables mistaken for a chart.
+  graphDetect: { minLines: 4, minLength: 0.45, minEven: 0.75 },
+
   // Title cards (text-only thumbnails): for a post without an image, its
   // short title (TOCTitle) on the theme background. Sizes in Figma px.
   titleCard: {
-    font: ["SF Pro Display", "SF Pro"], // installed system font: the first one found
+    // The site's font-family (code.visualstudio.com, body and headings). Like
+    // a browser, the first one installed on this computer is used.
+    font: ["system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "Oxygen-Sans", "Ubuntu", "Cantarell", "Helvetica Neue", "sans-serif"],
     weight: 600,          // Semibold
     size: 30,
     lineHeight: 34,
@@ -412,7 +440,7 @@ function autoCropDirection(box) {
 
 // Crops (if asked), removes frames, trims the image's own margins and fits
 // what's left into the frame.
-async function prepare(input, opts) {
+export async function prepare(input, opts) {
   const { frame, inset, scale } = CONFIG;
   const boxWidth = (frame.width - 2 * inset) * scale;
   const boxHeight = (frame.height - 2 * inset) * scale;
@@ -465,21 +493,9 @@ async function prepare(input, opts) {
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-  // Desaturate. With a tint weight for this category, colourful pixels count
-  // as further from the background than a neutral grey of the same brightness
-  // (like Photoshop's Black & White adjustment), so tinted boxes don't vanish.
-  const tint = CONFIG.tint[opts.type] ?? 0;
-  const away = bg.level < 128 ? 1 : -1; // further from a light background = darker
-  const grey = new Uint8Array(fitted.width * fitted.height);
-  for (let i = 0; i < grey.length; i++) {
-    const o = i * fitted.channels;
-    const chroma = Math.max(data[o], data[o + 1], data[o + 2]) - Math.min(data[o], data[o + 1], data[o + 2]);
-    grey[i] = Math.min(255, Math.max(0, Math.round(greyOf(data, o) + away * tint * Math.min(chroma, CONFIG.tintCap))));
-  }
   return {
     rgb: data,
     channels: fitted.channels,
-    grey,
     width: fitted.width,
     height: fitted.height,
     bgLevel: bg.level,
@@ -581,10 +597,135 @@ function colorize(prepared, preset, layout, opts) {
   return { images, report };
 }
 
-async function makeThumbnails(input, opts) {
-  if (opts.type === "text") return makeTitleCard(input, opts);
-  const preset = CONFIG.presets[opts.type];
+// Desaturate. With a tint weight for this preset, colourful pixels count as
+// further from the background than a neutral grey of the same brightness
+// (like Photoshop's Black & White adjustment), so tinted boxes don't vanish.
+function desaturate({ rgb, channels, width, height, bgLevel }, type) {
+  const tint = CONFIG.tint[type] ?? 0;
+  const away = bgLevel < 128 ? 1 : -1; // further from a light background = darker
+  const grey = new Uint8Array(width * height);
+  for (let i = 0; i < grey.length; i++) {
+    const o = i * channels;
+    const chroma = Math.max(rgb[o], rgb[o + 1], rgb[o + 2]) - Math.min(rgb[o], rgb[o + 1], rgb[o + 2]);
+    grey[i] = Math.min(255, Math.max(0, Math.round(greyOf(rgb, o) + away * tint * Math.min(chroma, CONFIG.tintCap))));
+  }
+  return grey;
+}
+
+// Is this a screenshot of code, or of other plain text (a terminal, an
+// editor)? Those get the code colours; everything else gets the image
+// colours. A text screenshot is lines of text and little else: once borders,
+// panels and bars (long straight runs) are set aside, what's left forms lines
+// of about the same height. Diagrams and charts have shapes, plotted lines and
+// scattered labels instead. Settings and thresholds: CONFIG.codeDetect.
+function looksLikeCode({ rgb, channels, width: W, height: H, bgLevel }) {
+  const { minLines, minText, minRegular } = CONFIG.codeDetect;
+  const ink = new Uint8Array(W * H);
+  for (let i = 0; i < ink.length; i++) ink[i] = Math.abs(greyOf(rgb, i * channels) - bgLevel) > 25 ? 1 : 0;
+
+  // Runs longer than a letter stroke aren't text. Runs across nearly the whole
+  // image (window frames, title bars, highlight bars) are chrome around the
+  // content, and don't count at all.
+  const text = ink.slice();
+  const chrome = new Uint8Array(W * H);
+  for (const across of [true, false]) {
+    const [count, length, longest] = across ? [H, W, Math.max(12, W * 0.06)] : [W, H, Math.max(12, H * 0.1)];
+    const at = (line, k) => (across ? line * W + k : k * W + line);
+    for (let line = 0; line < count; line++) {
+      for (let k = 0; k < length;) {
+        if (!ink[at(line, k)]) { k++; continue; }
+        let end = k;
+        while (end < length && ink[at(line, end)]) end++;
+        for (let j = k; j < end; j++) {
+          if (end - k > longest) text[at(line, j)] = 0;
+          if (end - k >= length * 0.8) chrome[at(line, j)] = 1;
+        }
+        k = end;
+      }
+    }
+  }
+
+  // Lines of text: rows with text in them, between empty rows.
+  let inkCount = 0, textCount = 0;
+  const rowText = new Array(H).fill(0);
+  for (let i = 0; i < ink.length; i++) {
+    if (ink[i] && !chrome[i]) inkCount++;
+    if (text[i]) { textCount++; rowText[Math.floor(i / W)]++; }
+  }
+  const lines = [];
+  for (let y = 0; y < H;) {
+    if (rowText[y] <= W * 0.002) { y++; continue; }
+    let end = y, pixels = 0;
+    while (end < H && rowText[end] > W * 0.002) pixels += rowText[end++];
+    lines.push({ height: end - y, pixels });
+    y = end;
+  }
+  if (lines.length < minLines || !textCount) return false;
+  const usual = lines.map((l) => l.height).sort((a, b) => a - b)[lines.length >> 1];
+  const regular = lines.filter((l) => l.height >= usual * 0.6 && l.height <= usual * 1.6).reduce((t, l) => t + l.pixels, 0);
+  return textCount / inkCount >= minText && regular / textCount >= minRegular;
+}
+
+// Is this a chart? Charts have axes and gridlines: thin lines across most of
+// the image, several of them, evenly spaced, in one direction. Box diagrams
+// have shorter edges, and tables rows of uneven height. It only says yes when
+// it's sure: a chart it misses gets the diagram colours, a little darker.
+// Settings and thresholds: CONFIG.graphDetect.
+function looksLikeGraph({ rgb, channels, width: W, height: H, bgLevel }) {
+  const { minLines, minLength, minEven } = CONFIG.graphDetect;
+  const ink = new Uint8Array(W * H);
+  for (let i = 0; i < ink.length; i++) ink[i] = Math.abs(greyOf(rgb, i * channels) - bgLevel) > 6 ? 1 : 0;
+  for (const across of [true, false]) {
+    const [count, length] = across ? [H, W] : [W, H];
+    const at = (line, k) => (across ? line * W + k : k * W + line);
+    const longest = [];
+    for (let line = 0; line < count; line++) {
+      let best = 0, run = 0;
+      for (let k = 0; k < length; k++) { run = ink[at(line, k)] ? run + 1 : 0; best = Math.max(best, run); }
+      longest.push(best);
+    }
+    // Thin long lines: long, with the row (column) 3px away not long (so not
+    // the inside of a filled block). Neighbouring rows of one line count once.
+    const lines = [];
+    for (let line = 0; line < count; line++) {
+      if (longest[line] < length * minLength) continue;
+      const thin = line < 3 || longest[line - 3] < length * 0.2 || line + 3 >= count || longest[line + 3] < length * 0.2;
+      if (!thin || (lines.length && line - lines[lines.length - 1] <= 3)) continue;
+      lines.push(line);
+    }
+    if (lines.length < minLines) continue;
+    const gaps = lines.slice(1).map((l, i) => l - lines[i]).sort((a, b) => a - b);
+    const usual = gaps[gaps.length >> 1];
+    if (gaps.filter((g) => Math.abs(g - usual) <= usual * 0.15).length / gaps.length >= minEven) return true;
+  }
+  return false;
+}
+
+// What the alt text says the image is: "graph" for a chart, "diagram" for a
+// diagram, null when it says neither or both. "Flowchart" is a diagram;
+// "graphic" and "screenshot" say nothing.
+export function typeFromAlt(alt) {
+  if (!alt) return null;
+  const text = alt.toLowerCase().replace(/flow ?charts?/g, "diagram");
+  const chart = /\b(charts?|plots?|histograms?|scatter|sparklines?|heat ?maps?|flame graphs?|(bar|line|pie|area) graphs?)\b/.test(text);
+  const diagram = /\b(diagrams?|illustrations?)\b/.test(text);
+  return chart === diagram ? null : chart ? "graph" : "diagram";
+}
+
+// Makes both thumbnails for one image, or for a post's .md file (a text-only
+// thumbnail), into opts.out. Returns { entry, checks }.
+//   opts.type  code, diagram, graph (or chart) or text: skips the detection
+//   opts.alt   the image's alt text, a hint when opts.type isn't given
+export async function makeThumbnails(input, opts) {
+  if (opts.type === "chart") opts = { ...opts, type: "graph" };
+  if ((opts.type ?? (/\.md$/i.test(input) ? "text" : null)) === "text") return makeTitleCard(input, opts);
   const prepared = await prepare(input, opts);
+  const fromAlt = typeFromAlt(opts.alt);
+  const decidedBy = opts.type ? "type" : fromAlt ? "alt text" : "detected";
+  const type = opts.type ?? fromAlt ?? (looksLikeCode(prepared) ? "code" : looksLikeGraph(prepared) ? "graph" : "diagram");
+  opts = { ...opts, type };
+  prepared.grey = desaturate(prepared, opts.type);
+  const preset = CONFIG.presets[opts.type];
   const { width, height, framesRemoved, crop, autoCrop } = prepared;
 
   const { frame, scale } = CONFIG;
@@ -610,7 +751,7 @@ async function makeThumbnails(input, opts) {
   const margins = [top, canvasWidth - width - left, canvasHeight - height - top, left].map((m) => m / scale);
 
   log(
-    `${input}  [${opts.type}]\n` +
+    `${input}  [${opts.type}, ${decidedBy === "type" ? "given" : `from the ${decidedBy === "alt text" ? "alt text" : "image"}`}]\n` +
     (crop ? `  crop: left ${crop.left}, top ${crop.top}, width ${crop.width}, height ${crop.height} (px of the original)\n` : "") +
     (autoCrop
       ? `  auto crop: too ${autoCrop.direction} (whole, it would fill only ${Math.round(autoCrop.fill * 100)}% of the ` +
@@ -622,7 +763,7 @@ async function makeThumbnails(input, opts) {
     describeChecks(checks).map((line) => `  ${line}`).join("\n"),
   );
 
-  const entry = { name: base, type: opts.type, source: path.relative(opts.out, input).replaceAll("\\", "/"), files, margins };
+  const entry = { name: base, type: opts.type, decidedBy, source: path.relative(opts.out, input).replaceAll("\\", "/"), files, margins };
   return { entry, checks };
 }
 
@@ -631,6 +772,7 @@ async function makeThumbnails(input, opts) {
 // no off-palette colours.
 async function saveThemes(images, base, opts) {
   const { frame, scale } = CONFIG;
+  await mkdir(opts.out, { recursive: true });
   const files = {};
   const saved = [];
   for (const [themeName, pixels] of Object.entries(images)) {
@@ -653,10 +795,9 @@ async function makeTitleCard(input, opts) {
     throw Object.assign(new Error("There's no TOCTitle in the post's front matter"),
       { advice: "Check that it's the post's .md file and that it has a TOCTitle line." });
   }
-  const { pixels, lines } = await renderTitleCard(title, CONFIG);
+  const { pixels, lines, font } = await renderTitleCard(title, CONFIG);
   const checks = checkTitleCard({ config: CONFIG, pixels, lines });
   const base = path.basename(input, path.extname(input));
-  await mkdir(opts.out, { recursive: true });
   const { files, saved } = await saveThemes(pixels, base, opts);
   checks.push(...saved);
 
@@ -668,6 +809,7 @@ async function makeTitleCard(input, opts) {
   log(
     `${input}  [text]\n` +
     `  title: ${lines.join(" / ")}\n` +
+    `  font: ${font}\n` +
     `  margins (top right bottom left): ${margins.join(" ")}\n` +
     Object.values(files).map((f) => `  -> ${path.join(opts.out, f)}`).join("\n") + "\n" +
     describeChecks(checks).map((line) => `  ${line}`).join("\n"),
@@ -826,8 +968,8 @@ async function updateManifest(outDir, made) {
 
 // The protocol's defaults. Options that go beyond it, such as the automatic
 // crop, are off unless asked for.
-const DEFAULT_OPTIONS = {
-  type: null, crop: "off", out: "assets/thumbs", source: "auto", fit: "contain", frames: "remove",
+export const DEFAULT_OPTIONS = {
+  type: null, crop: "auto", out: "out", source: "auto", fit: "contain", frames: "remove",
   accent: "off",
 };
 
@@ -842,66 +984,54 @@ function parseArgs(argv) {
 }
 
 // The inbox: `npm run thumbs` with no arguments makes thumbnails for every
-// image in inbox/<category>/ and writes them to a fresh out/ folder, with
-// tall images cropped automatically and every image checked. The list of
-// images made goes to out/_work/.
+// image and post (.md) in inbox/, into a fresh out/ folder, and checks them.
 const INBOX = "inbox";
 const OUT = "out";
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif", ".tif", ".tiff", ".svg"]);
-// Image categories, plus text: title cards, made from a post's .md file.
-const TYPES = [...Object.keys(CONFIG.presets), "text"];
-const accepts = (type, name) => (type === "text" ? /\.md$/i.test(name) : IMAGE_EXTENSIONS.has(path.extname(name).toLowerCase()));
+const accepted = (name) => IMAGE_EXTENSIONS.has(path.extname(name).toLowerCase()) || /\.md$/i.test(name);
+const TYPES = ["code", "diagram", "graph", "chart", "text"];
 
 async function runInbox() {
-  for (const type of TYPES) await mkdir(path.join(INBOX, type), { recursive: true });
-
-  const jobs = [];
-  for (const type of TYPES) {
-    for (const name of (await readdir(path.join(INBOX, type))).sort()) {
-      if (accepts(type, name)) jobs.push({ type, file: path.join(INBOX, type, name) });
-    }
-  }
+  await mkdir(INBOX, { recursive: true });
+  const jobs = (await readdir(INBOX)).filter(accepted).sort().map((name) => path.join(INBOX, name));
   if (jobs.length === 0) {
-    console.log(`The inbox is empty. Put images in ${Object.keys(CONFIG.presets).map((t) => `${INBOX}/${t}`).join(", ")}, or a post's .md file in ${INBOX}/text, then run npm run thumbs again.`);
+    console.log(`The inbox is empty. Put images, or the .md file of a post without an image, in ${INBOX}/, then run npm run thumbs again.`);
     return;
   }
 
   // Start from an empty out/ folder, so it always matches what's in the inbox.
   await rm(OUT, { recursive: true, force: true });
-  const workDir = path.join(OUT, "_work");
-  await mkdir(workDir, { recursive: true });
   const made = [];
   const names = new Map();
   let ready = 0;
-  for (const { type, file } of jobs) {
+  for (const file of jobs) {
     const name = path.basename(file, path.extname(file));
     if (names.has(name)) {
-      console.log(`FAILED       ${file}\n             Another image is also called "${name}" (${names.get(name)}). Rename one of them.`);
+      console.log(`FAILED       ${file}\n             Another file is also called "${name}" (${names.get(name)}). Rename one of them.`);
       continue;
     }
     names.set(name, file);
     try {
-      const { entry, checks } = await makeThumbnails(file, { ...DEFAULT_OPTIONS, type, out: OUT, crop: "auto", quiet: true });
+      const { entry, checks } = await makeThumbnails(file, { ...DEFAULT_OPTIONS, out: OUT, quiet: true });
       made.push(entry);
       const outputs = Object.values(entry.files).map((f) => path.join(OUT, f)).join(", ");
       const problems = describeChecks(checks);
       if (problems.length === 0) {
         ready++;
-        console.log(`READY        ${file}  ->  ${outputs}`);
+        console.log(`READY        ${file}  [${entry.type}]  ->  ${outputs}`);
       } else {
-        console.log(`NEEDS A LOOK ${file}  ->  ${outputs}`);
+        console.log(`NEEDS A LOOK ${file}  [${entry.type}]  ->  ${outputs}`);
         for (const line of problems) console.log(`             ${line}`);
       }
     } catch (error) {
-      const advice = error.advice ?? (type === "text"
+      const advice = error.advice ?? (/\.md$/i.test(file)
         ? "Check that it's the post's .md file; if it is, send it to the design team."
         : "Check that it's an image file; if it is, send it to the design team.");
       console.log(`FAILED       ${file}\n             ${error.message}. ${advice}`);
     }
   }
 
-  const entries = await updateManifest(workDir, made);
-  await writePreview(OUT, entries);
+  await writePreview(OUT, made.sort((a, b) => a.name.localeCompare(b.name)));
   console.log(`\n${ready} of ${jobs.length} ready. See them all in ${path.join(OUT, "preview.html")}.`);
 }
 
@@ -909,15 +1039,14 @@ async function main() {
   if (process.argv.length <= 2) return runInbox();
 
   const opts = parseArgs(process.argv.slice(2));
-  if (opts.inputs.length === 0 || !TYPES.includes(opts.type)) {
+  if (opts.inputs.length === 0 || (opts.type && !TYPES.includes(opts.type))) {
     console.error(
-      `Usage: npm run thumbs -- --type ${TYPES.join("|")} <image or post .md> [more...] [--crop off|auto|"l,t,w,h"] [--out dir] ` +
+      `Usage: npm run thumbs -- <image or post .md> [more...] [--out dir] [--type ${TYPES.join("|")}] [--crop auto|off|"l,t,w,h"] ` +
       "[--source auto|light|dark] [--fit contain|cover] [--frames remove|keep] [--accent on|off]",
     );
-    if (opts.inputs.length > 0) console.error(opts.type ? `Unknown type "${opts.type}".` : "--type is required.");
+    if (opts.type && !TYPES.includes(opts.type)) console.error(`Unknown type "${opts.type}".`);
     process.exit(1);
   }
-  await mkdir(opts.out, { recursive: true });
   const made = [];
   for (const input of opts.inputs) made.push((await makeThumbnails(input, opts)).entry);
   const entries = await updateManifest(opts.out, made);
@@ -925,4 +1054,5 @@ async function main() {
   console.log(`Preview: ${path.join(opts.out, "preview.html")}`);
 }
 
-await main();
+// Run as a command; when imported (by a build script), just export.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();

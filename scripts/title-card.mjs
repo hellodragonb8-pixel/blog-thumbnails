@@ -1,6 +1,6 @@
 // Title cards (text-only thumbnails): the thumbnails for a post without
 // an image. The post's short title, read from its markdown file, is set in the
-// title font and centred on each theme's background. Settings are in
+// site's font and centred on each theme's background. Settings are in
 // CONFIG.titleCard (make-thumbnails.mjs).
 
 import sharp from "sharp";
@@ -85,7 +85,7 @@ export async function wrapTitle(title, measure, maxWidth) {
 const escapeXml = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 // The SVG text attributes for the title font, at the export scale.
-function fontAttributes(settings, scale, family = settings.font.map((f) => `'${f}'`).join(", ")) {
+function fontAttributes(settings, scale, family) {
   return `font-family="${family}" font-weight="${settings.weight}" font-size="${settings.size * scale}" ` +
     `letter-spacing="${settings.size * settings.letterSpacing * scale}"`;
 }
@@ -97,12 +97,12 @@ async function renderGrey(svg) {
 
 // Width of one line of text in the title font at the export scale, measured
 // on its pixels.
-async function lineWidth(text, settings, scale) {
+async function lineWidth(text, settings, scale, family) {
   const size = settings.size * scale;
   const W = Math.ceil(text.length * size) + size, H = size * 2;
   const { data } = await renderGrey(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">` +
-    `<text x="${size / 2}" y="${size * 1.4}" ${fontAttributes(settings, scale)}>${escapeXml(text)}</text></svg>`,
+    `<text x="${size / 2}" y="${size * 1.4}" ${fontAttributes(settings, scale, family)}>${escapeXml(text)}</text></svg>`,
   );
   let left = W, right = -1;
   for (let y = 0; y < H; y++) {
@@ -113,31 +113,57 @@ async function lineWidth(text, settings, scale) {
   return right < 0 ? 0 : right - left + 1;
 }
 
-// Whether the title font is installed. A font that isn't installed is quietly
-// replaced by the system's default, so this draws a sample in the title font
-// and in a font that can't exist: the same pixels mean it was replaced.
-export async function titleFontInstalled(settings) {
-  const sample = (family) => renderGrey(
+// CSS names for the system's own font, which the font list starts with. A
+// browser on a Mac uses SF Pro for them; these are its names when installed
+// as a font. Elsewhere the list's next names apply (Segoe UI, Roboto, ...).
+const SYSTEM_FONT = ["system-ui", "-apple-system", "BlinkMacSystemFont", "ui-sans-serif"];
+const SYSTEM_FONT_NAMES = ["SF Pro", "SF Pro Display", ".SF NS", "System Font"];
+const GENERIC = ["sans-serif", "serif", "monospace"];
+const quoted = (family) => (GENERIC.includes(family) ? family : `'${family}'`);
+
+// Whether a font is installed. A font that isn't installed is quietly replaced
+// by the system's default, so this draws a sample in that font and in a font
+// that can't exist: the same pixels mean it was replaced.
+async function installed(family, settings) {
+  const sample = (name) => renderGrey(
     `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="80">` +
-    `<text x="10" y="60" ${fontAttributes(settings, 1, family)}>Hamburgefonstiv 0123</text></svg>`,
+    `<text x="10" y="60" ${fontAttributes(settings, 1, name)}>Hamburgefonstiv 0123</text></svg>`,
   );
-  const [wanted, missing] = await Promise.all([sample(settings.font.map((f) => `'${f}'`).join(", ")), sample("'No Such Font 7f3a'")]);
+  const [wanted, missing] = await Promise.all([sample(quoted(family)), sample("'No Such Font 7f3a'")]);
   return !wanted.data.equals(missing.data);
 }
 
+// The font to set titles in: like a browser reading the site's font-family,
+// the first one in settings.font that's installed on this computer. The
+// generic sans-serif at the end is always there: the system's default font.
+const chosen = new Map();
+export async function pickFont(settings) {
+  const key = settings.font.join(",") + settings.weight;
+  if (!chosen.has(key)) {
+    chosen.set(key, (async () => {
+      for (const family of settings.font) {
+        if (GENERIC.includes(family)) return family;
+        for (const name of SYSTEM_FONT.includes(family) ? SYSTEM_FONT_NAMES : [family]) {
+          if (await installed(name, settings)) return name;
+        }
+      }
+      return "sans-serif";
+    })());
+  }
+  return chosen.get(key);
+}
+
 // The title card for both themes. config: CONFIG from make-thumbnails.mjs.
-// Returns { pixels: { light, dark } as raw RGB, lines }, or throws when the
-// title can't be set (the font isn't installed, or one word is too wide).
+// Returns { pixels: { light, dark } as raw RGB, lines, font }, or throws when
+// one word of the title is too wide for the thumbnail.
 export async function renderTitleCard(title, config) {
   const settings = config.titleCard;
   const { frame, inset, scale } = config;
   const W = frame.width * scale, H = frame.height * scale;
 
-  if (!(await titleFontInstalled(settings))) {
-    throw Object.assign(new Error(`The title font (${settings.font[0]} Semibold) isn't installed on this computer`),
-      { advice: "Install it (on Windows, for all users), then run the command again." });
-  }
-  const lines = await wrapTitle(title, (text) => lineWidth(text, settings, scale), (frame.width - 2 * inset) * scale);
+  const font = await pickFont(settings);
+  const family = quoted(font);
+  const lines = await wrapTitle(title, (text) => lineWidth(text, settings, scale, family), (frame.width - 2 * inset) * scale);
   if (!lines) {
     throw Object.assign(new Error(`A word in the title "${title}" is too wide for the thumbnail`),
       { advice: "Ask the author for a shorter TOCTitle, or ask the design team." });
@@ -152,10 +178,10 @@ export async function renderTitleCard(title, config) {
   for (const [themeName, colors] of Object.entries(settings.colors)) {
     const text = lines.map((line, i) =>
       `<text x="${W / 2}" y="${top + i * lineHeight + settings.baseline * scale}" text-anchor="middle" fill="${colors.text}" ` +
-      `${fontAttributes(settings, scale)}>${escapeXml(line)}</text>`).join("");
+      `${fontAttributes(settings, scale, family)}>${escapeXml(line)}</text>`).join("");
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">` +
       `<rect width="${W}" height="${H}" fill="${colors.background}"/>${text}</svg>`;
     pixels[themeName] = await sharp(Buffer.from(svg)).removeAlpha().raw().toBuffer();
   }
-  return { pixels, lines };
+  return { pixels, lines, font };
 }
