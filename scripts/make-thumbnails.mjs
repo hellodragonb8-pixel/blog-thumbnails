@@ -71,7 +71,8 @@ import { pathToFileURL } from "node:url";
 import { boxFill, buildLut, greyLevel, hexToRgb, legibility, strongestLevel, textLevel, toneCurve } from "./tone.mjs";
 import { loadInput } from "./svg.mjs";
 import { checkSavedFile, checkThumbnails, checkTitleCard, inkMargins, lostText } from "./checks.mjs";
-import { readTitle, renderTitleCard } from "./title-card.mjs";
+import { frontMatterField, readTitle, renderTitleCard } from "./title-card.mjs";
+import { existsSync } from "node:fs";
 
 // ---------------------------------------------------------------------------
 // Settings
@@ -173,7 +174,7 @@ const CONFIG = {
     lineHeight: 34,
     letterSpacing: -0.01, // share of the size: -1%
     baseline: 28,         // from the top of each line to its baseline, as in the Figma frames
-    maxLines: 3,          // all that fit inside the margins: 3 x 34 <= 198 - 2 x 32
+    maxLines: 3,          // all that fit inside the margins: 3 x 34 <= 198 - 2 x 32; longer titles end in "…"
     colors: {             // same backgrounds as the presets
       light: { background: "#f4f5f6", text: "#1b2022" },
       dark:  { background: "#0b0c0d", text: "#989fa4" },
@@ -712,13 +713,72 @@ export function typeFromAlt(alt) {
   return chart === diagram ? null : chart ? "graph" : "diagram";
 }
 
-// Makes both thumbnails for one image, or for a post's .md file (a text-only
-// thumbnail), into opts.out. Returns { entry, checks }.
+// The first picture in a post, after the front matter and outside code
+// blocks: { kind: "image", src, alt } for an image (markdown ![alt](src) or
+// HTML <img>), { kind: "video" } for a video (a <video>, an embedded player,
+// or the preview picture that links to a video, "[![Watch ... on
+// YouTube](youtube-....jpg)](...)"), or null for a post with neither.
+export function firstPicture(markdown) {
+  const body = markdown.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---/, "").replace(/```[\s\S]*?```/g, "");
+  const found = /!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+["'][^"']*["'])?\s*\)|<img\b[^>]*>|<video\b|<iframe\b[^>]*(?:youtu\.?be|vimeo|player)[^>]*>/gi;
+  for (const m of body.matchAll(found)) {
+    if (/^<(video|iframe)/i.test(m[0])) return { kind: "video" };
+    let src = m[2], alt = m[1] ?? "";
+    if (!m[2]) {
+      const attr = (name) => m[0].match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i"));
+      const s = attr("src"), a = attr("alt");
+      if (!s) continue;
+      src = s[1] ?? s[2];
+      alt = a ? (a[1] ?? a[2]) : "";
+    }
+    const before = body.slice(Math.max(0, m.index - 300), m.index);
+    const after = body.slice(m.index + m[0].length, m.index + m[0].length + 300);
+    const linkedTo = (after.match(/^\]\(\s*<?([^)\s>]+)/) ?? [])[1] ?? (/<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>\s*$/i.exec(before) ?? [])[1] ?? "";
+    const video = /youtu\.?be|vimeo|\/shows\/|video/i.test(linkedTo) || /^\s*watch\b/i.test(alt) ||
+      /^(youtube|video)-/i.test(src.split("/").pop());
+    return video ? { kind: "video" } : { kind: "image", src, alt };
+  }
+  return null;
+}
+
+// A post (its .md file): the thumbnails are made from the post's first image,
+// with that image's alt text as the hint and the post's ThumbnailStyle line
+// (code, diagram, graph or chart), if it has one. A post with no image, or
+// whose first picture is a video, gets a text-only thumbnail. Either way
+// they're named after the post.
+async function makePostThumbnails(input, opts) {
+  const markdown = await readFile(input, "utf8");
+  const name = opts.name ?? path.basename(input, path.extname(input));
+  const image = opts.type === "text" ? null : firstPicture(markdown);
+  if (image?.kind !== "image") {
+    const reason = opts.type === "text" ? "asked for" : image ? "the post starts with a video" : "the post has no image";
+    return makeTitleCard(input, { ...opts, name, reason });
+  }
+
+  if (/^[a-z][a-z0-9+.-]*:/i.test(image.src)) {
+    throw Object.assign(new Error(`The post's first image is on another site (${image.src})`),
+      { advice: "Save it next to the post and point the post at that copy, or give the image file to the script instead." });
+  }
+  const file = path.resolve(path.dirname(input), decodeURIComponent(image.src.split(/[?#]/)[0]));
+  if (!existsSync(file)) {
+    throw Object.assign(new Error(`The post's first image, ${image.src}, isn't where the post says`),
+      { advice: "Check that the image is in the post's folder, next to the .md file." });
+  }
+  const style = frontMatterField(markdown, "ThumbnailStyle")?.toLowerCase();
+  const type = opts.type ?? (["code", "diagram", "graph", "chart"].includes(style) ? style : undefined);
+  return makeThumbnails(file, { ...opts, name, type, alt: opts.alt ?? image.alt, post: input });
+}
+
+// Makes both thumbnails, into opts.out. Returns { entry, checks }.
+//   input      a post's .md file (its first image, or a text-only thumbnail
+//              when it has none), or an image file
 //   opts.type  code, diagram, graph (or chart) or text: skips the detection
 //   opts.alt   the image's alt text, a hint when opts.type isn't given
+//   opts.name  the thumbnails' name (default: the post's or image's file name)
 export async function makeThumbnails(input, opts) {
   if (opts.type === "chart") opts = { ...opts, type: "graph" };
-  if ((opts.type ?? (/\.md$/i.test(input) ? "text" : null)) === "text") return makeTitleCard(input, opts);
+  if (/\.md$/i.test(input)) return makePostThumbnails(input, opts);
+  if (opts.type === "text") throw new Error("A text-only thumbnail needs the post's .md file");
   const prepared = await prepare(input, opts);
   const fromAlt = typeFromAlt(opts.alt);
   const decidedBy = opts.type ? "type" : fromAlt ? "alt text" : "detected";
@@ -739,7 +799,7 @@ export async function makeThumbnails(input, opts) {
   };
   const { left, top } = layout;
 
-  const base = path.basename(input, path.extname(input));
+  const base = opts.name ?? path.basename(input, path.extname(input));
   const { images, report } = colorize(prepared, preset, layout, opts);
   const checks = checkThumbnails({ config: CONFIG, type: opts.type, prepared, pixels: images });
   const log = opts.quiet ? () => {} : console.log;
@@ -751,7 +811,7 @@ export async function makeThumbnails(input, opts) {
   const margins = [top, canvasWidth - width - left, canvasHeight - height - top, left].map((m) => m / scale);
 
   log(
-    `${input}  [${opts.type}, ${decidedBy === "type" ? "given" : `from the ${decidedBy === "alt text" ? "alt text" : "image"}`}]\n` +
+    `${opts.post ? `${opts.post}, first image ${path.basename(input)}` : input}  [${opts.type}, ${decidedBy === "type" ? "given" : `from the ${decidedBy === "alt text" ? "alt text" : "image"}`}]\n` +
     (crop ? `  crop: left ${crop.left}, top ${crop.top}, width ${crop.width}, height ${crop.height} (px of the original)\n` : "") +
     (autoCrop
       ? `  auto crop: too ${autoCrop.direction} (whole, it would fill only ${Math.round(autoCrop.fill * 100)}% of the ` +
@@ -764,6 +824,7 @@ export async function makeThumbnails(input, opts) {
   );
 
   const entry = { name: base, type: opts.type, decidedBy, source: path.relative(opts.out, input).replaceAll("\\", "/"), files, margins };
+  if (opts.post) entry.post = opts.post;
   return { entry, checks };
 }
 
@@ -795,9 +856,9 @@ async function makeTitleCard(input, opts) {
     throw Object.assign(new Error("There's no TOCTitle in the post's front matter"),
       { advice: "Check that it's the post's .md file and that it has a TOCTitle line." });
   }
-  const { pixels, lines, font } = await renderTitleCard(title, CONFIG);
+  const { pixels, lines, font, truncated } = await renderTitleCard(title, CONFIG);
   const checks = checkTitleCard({ config: CONFIG, pixels, lines });
-  const base = path.basename(input, path.extname(input));
+  const base = opts.name ?? path.basename(input, path.extname(input));
   const { files, saved } = await saveThemes(pixels, base, opts);
   checks.push(...saved);
 
@@ -807,15 +868,15 @@ async function makeTitleCard(input, opts) {
   const margins = m ? [m.top, m.right, m.bottom, m.left].map((px) => px / scale) : [];
   const log = opts.quiet ? () => {} : console.log;
   log(
-    `${input}  [text]\n` +
-    `  title: ${lines.join(" / ")}\n` +
+    `${input}  [text${opts.reason ? `: ${opts.reason}` : ""}]\n` +
+    `  title: ${lines.join(" / ")}${truncated ? " (shortened to fit 3 lines)" : ""}\n` +
     `  font: ${font}\n` +
     `  margins (top right bottom left): ${margins.join(" ")}\n` +
     Object.values(files).map((f) => `  -> ${path.join(opts.out, f)}`).join("\n") + "\n" +
     describeChecks(checks).map((line) => `  ${line}`).join("\n"),
   );
 
-  const entry = { name: base, type: "text", title, lines, source: path.relative(opts.out, input).replaceAll("\\", "/"), files, margins };
+  const entry = { name: base, type: "text", title, lines, truncated, reason: opts.reason, source: path.relative(opts.out, input).replaceAll("\\", "/"), files, margins };
   return { entry, checks };
 }
 

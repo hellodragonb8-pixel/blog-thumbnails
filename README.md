@@ -1,6 +1,6 @@
 # Blog thumbnails
 
-Turns a blog post's image into two grayscale thumbnails, one for the light theme and one for the dark theme: `<name>-light.webp` and `<name>-dark.webp` (716 × 396, lossless WebP). A post without an image gets a text-only thumbnail with its title instead.
+Turns a blog post's **first image** into two grayscale thumbnails, one for the light theme and one for the dark theme: `<post name>-light.webp` and `<post name>-dark.webp` (716 × 396, lossless WebP). A post without an image, or whose first picture is a video (a video player, or a "Watch … on YouTube" preview picture), gets a text-only thumbnail with its title instead.
 
 ## Set up (once)
 
@@ -11,16 +11,17 @@ Install [Node.js](https://nodejs.org) 20.9 or later, then run `npm install` in t
 ```js
 import { makeThumbnails, DEFAULT_OPTIONS } from "./scripts/make-thumbnails.mjs";
 
-// file: the post's image, or the post's .md file for a post without an image
-// alt:  the image's alt text from the post (optional, helps tell charts from diagrams)
-// type: "code", "diagram" or "graph"/"chart" to skip the detection (optional)
-const { entry, checks } = await makeThumbnails(file, { ...DEFAULT_OPTIONS, out: "path/to/output", alt, type });
+// post: the post's .md file, with its images next to it as in the blog's folders.
+// The script finds the first image and uses its alt text to help tell charts from diagrams.
+const { entry, checks } = await makeThumbnails(post, { ...DEFAULT_OPTIONS, out: "path/to/output" });
 // entry.files.light and entry.files.dark: the two files written to `out`
-// entry.type: "code", "diagram", "graph" or "text"; entry.decidedBy: "type", "alt text" or "detected"
+// entry.source: the image used; entry.type: "code", "diagram", "graph" or "text"
 // checks with ok: false are worth a warning in the build log; the files are still made
 ```
 
-Or from the command line: `npm run thumbs -- <image or post .md> [more...] --out <folder> [--alt "<alt text>"] [--type chart]`.
+A post can set its look with a `ThumbnailStyle: chart` line (or `diagram`, `code`) in its front matter, for the rare image the script gets wrong.
+
+Or from the command line: `npm run thumbs -- <post .md> [more...] --out <folder>`.
 
 ## Text-only thumbnails
 
@@ -33,4 +34,4 @@ The post's `TOCTitle` (the short title at the top of its `.md` file), as written
 | Light theme | Text `#1b2022` on `#f4f5f6` |
 | Dark theme | Text `#989fa4` on `#0b0c0d` |
 
-A title longer than 3 lines needs to be truncated.
+A title longer than 3 lines is truncated: it's cut at a word so it fits in 3 lines, and the last line ends with "…".

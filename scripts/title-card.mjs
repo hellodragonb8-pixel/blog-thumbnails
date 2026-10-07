@@ -9,22 +9,26 @@ import sharp from "sharp";
 // The title
 // ---------------------------------------------------------------------------
 
-// The post's short title: the TOCTitle field in the front matter of its
-// markdown file (the block between the first two --- lines), the same title
-// the blog archive lists. PageTitle is the long one at the top of the post.
-// Null when there's no TOCTitle.
-export function readTitle(markdown) {
+// One field of a post's front matter (the block between the first two ---
+// lines at the top of its markdown file), quotes removed. Null when absent.
+export function frontMatterField(markdown, key) {
   const front = markdown.replace(/^\uFEFF/, "").match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!front) return null;
   for (const line of front[1].split(/\r?\n/)) {
-    const m = line.match(/^TOCTitle\s*:\s*(.*)$/);
-    if (!m) continue;
-    let value = m[1].trim();
+    const m = line.match(/^([A-Za-z]+)\s*:\s*(.*)$/);
+    if (!m || m[1] !== key) continue;
+    let value = m[2].trim();
     if (/^"(.*)"$/.test(value)) value = value.slice(1, -1).replace(/\\(["\\])/g, "$1");
     else if (/^'(.*)'$/.test(value)) value = value.slice(1, -1).replace(/''/g, "'");
     return value.replace(/\s+/g, " ").trim() || null;
   }
   return null;
+}
+
+// The post's short title: its TOCTitle, the same title the blog archive
+// lists. PageTitle is the long one at the top of the post.
+export function readTitle(markdown) {
+  return frontMatterField(markdown, "TOCTitle");
 }
 
 // ---------------------------------------------------------------------------
@@ -153,9 +157,23 @@ export async function pickFont(settings) {
   return chosen.get(key);
 }
 
+// A title too long for settings.maxLines, shortened: as many of its words as
+// fit in that many lines with "…" after the last one (dropping punctuation
+// left before it). Null when not even the first word fits.
+async function truncateTitle(title, measure, maxWidth, maxLines) {
+  const words = title.split(" ");
+  for (let count = words.length - 1; count > 0; count--) {
+    const shortened = words.slice(0, count).join(" ").replace(/[\s,;:.\-–—(]+$/, "") + "…";
+    const lines = await wrapTitle(shortened, measure, maxWidth);
+    if (lines && lines.length <= maxLines) return lines;
+  }
+  return null;
+}
+
 // The title card for both themes. config: CONFIG from make-thumbnails.mjs.
-// Returns { pixels: { light, dark } as raw RGB, lines, font }, or throws when
-// one word of the title is too wide for the thumbnail.
+// Returns { pixels: { light, dark } as raw RGB, lines, font, truncated }, or
+// throws when one word of the title is too wide for the thumbnail. A title
+// longer than settings.maxLines is cut to fit, ending in "…".
 export async function renderTitleCard(title, config) {
   const settings = config.titleCard;
   const { frame, inset, scale } = config;
@@ -163,7 +181,18 @@ export async function renderTitleCard(title, config) {
 
   const font = await pickFont(settings);
   const family = quoted(font);
-  const lines = await wrapTitle(title, (text) => lineWidth(text, settings, scale, family), (frame.width - 2 * inset) * scale);
+  const widths = new Map();
+  const measure = async (text) => {
+    if (!widths.has(text)) widths.set(text, await lineWidth(text, settings, scale, family));
+    return widths.get(text);
+  };
+  const maxWidth = (frame.width - 2 * inset) * scale;
+  let lines = await wrapTitle(title, measure, maxWidth);
+  let truncated = false;
+  if (lines && lines.length > settings.maxLines) {
+    lines = await truncateTitle(title, measure, maxWidth, settings.maxLines);
+    truncated = true;
+  }
   if (!lines) {
     throw Object.assign(new Error(`A word in the title "${title}" is too wide for the thumbnail`),
       { advice: "Ask the author for a shorter TOCTitle, or ask the design team." });
@@ -183,5 +212,5 @@ export async function renderTitleCard(title, config) {
       `<rect width="${W}" height="${H}" fill="${colors.background}"/>${text}</svg>`;
     pixels[themeName] = await sharp(Buffer.from(svg)).removeAlpha().raw().toBuffer();
   }
-  return { pixels, lines, font };
+  return { pixels, lines, font, truncated };
 }
