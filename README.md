@@ -1,27 +1,11 @@
 # Blog thumbnails
 
-Turns a blog post's **first image** into two grayscale thumbnails, one for the light theme and one for the dark theme: `<post name>-light.webp` and `<post name>-dark.webp` (716 × 396, lossless WebP). A post without an image, or whose first picture is a video (a video player, or a "Watch … on YouTube" preview picture), gets a text-only thumbnail with its title instead.
+Turns a blog post's **first image** into two grayscale thumbnails, one for the light theme and one for the dark theme: `<post name>-light.webp` and `<post name>-dark.webp` (716 × 396, lossless WebP). 
 
 ## Set up (once)
 
 Install [Node.js](https://nodejs.org) 20.9 or later, then run `npm install` in this folder.
 
-## Use it in a build
-
-```js
-import { makeThumbnails, DEFAULT_OPTIONS } from "./scripts/make-thumbnails.mjs";
-
-// post: the post's .md file, with its images next to it as in the blog's folders.
-// The script finds the first image and uses its alt text to help tell charts from diagrams.
-const { entry, checks } = await makeThumbnails(post, { ...DEFAULT_OPTIONS, out: "path/to/output" });
-// entry.files.light and entry.files.dark: the two files written to `out`
-// entry.source: the image used; entry.type: "code", "diagram", "graph" or "text"
-// checks with ok: false are worth a warning in the build log; the files are still made
-```
-
-A post can set its look with a `ThumbnailStyle: chart` line (or `diagram`, `code`) in its front matter, for the rare image the script gets wrong.
-
-Or from the command line: `npm run thumbs -- <post .md> [more...] --out <folder>`.
 
 ## Text-only thumbnails
 
